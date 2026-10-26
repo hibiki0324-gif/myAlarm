@@ -82,6 +82,8 @@ struct TemplateEditView: View {
     @State private var editing: AlarmEditTarget<TemplateAlarm>?
     @State private var isBulkInputPresented = false
     @State private var isBulkLabelPresented = false
+    @State private var isSelecting = false
+    @State private var selection: Set<PersistentIdentifier> = []
     @FocusState private var isNameFocused: Bool
 
     var body: some View {
@@ -117,44 +119,24 @@ struct TemplateEditView: View {
 
             Section("アラーム") {
                 ForEach(template.sortedAlarms) { alarm in
-                    AlarmRow(alarm: alarm)
-                        .contentShape(.rect)
-                        .onTapGesture { editing = .existing(alarm) }
-                        .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
+                    if isSelecting {
+                        SelectableRow(isSelected: selection.contains(alarm.persistentModelID)) {
+                            AlarmTimeLabel(timeText: alarm.timeText, label: alarm.label, isEnabled: alarm.isEnabled)
+                        }
+                        .onTapGesture { selection.formSymmetricDifference([alarm.persistentModelID]) }
+                    } else {
+                        AlarmRow(alarm: alarm)
+                            .contentShape(.rect)
+                            .onTapGesture { editing = .existing(alarm) }
+                            .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
+                    }
                 }
                 .onDelete { offsets in
                     let sorted = template.sortedAlarms
                     for index in offsets { context.delete(sorted[index]) }
                 }
-                Button("アラームを追加", systemImage: "plus.circle.fill") {
-                    isNameFocused = false
-                    editing = .new
-                }
-                Button("時間帯でまとめて追加", systemImage: "list.bullet.indent") {
-                    isNameFocused = false
-                    isBulkInputPresented = true
-                }
-                if !template.alarms.isEmpty {
-                    Button("ラベルをまとめて設定", systemImage: "tag") {
-                        isNameFocused = false
-                        isBulkLabelPresented = true
-                    }
-                }
-                let others = templates.filter { $0 != template }
-                if !others.isEmpty {
-                    Menu {
-                        ForEach(others) { other in
-                            Button {
-                                template.importAlarms(from: other)
-                            } label: {
-                                Text(other.name)
-                                Text(other.enabledAlarmTimes)
-                            }
-                        }
-                    } label: {
-                        Label("他のテンプレートから取り込む", systemImage: "square.and.arrow.down")
-                    }
-                    .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
+                if !isSelecting {
+                    alarmActions
                 }
             }
         }
@@ -166,6 +148,26 @@ struct TemplateEditView: View {
                 Spacer()
                 Button("完了") { isNameFocused = false }
             }
+            if isSelecting || !template.alarms.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(isSelecting ? "完了" : "選択") {
+                        isNameFocused = false
+                        isSelecting.toggle()
+                        selection = []
+                    }
+                }
+            }
+        }
+        .selectionDeleteBar(
+            isSelecting: isSelecting,
+            selection: $selection,
+            allIDs: template.alarms.map(\.persistentModelID)
+        ) {
+            for alarm in template.alarms where selection.contains(alarm.persistentModelID) {
+                context.delete(alarm)
+            }
+            selection = []
+            isSelecting = false
         }
         .sheet(item: $editing) { target in
             switch target {
@@ -194,6 +196,40 @@ struct TemplateEditView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var alarmActions: some View {
+        Button("アラームを追加", systemImage: "plus.circle.fill") {
+            isNameFocused = false
+            editing = .new
+        }
+        Button("時間帯でまとめて追加", systemImage: "list.bullet.indent") {
+            isNameFocused = false
+            isBulkInputPresented = true
+        }
+        if !template.alarms.isEmpty {
+            Button("ラベルをまとめて設定", systemImage: "tag") {
+                isNameFocused = false
+                isBulkLabelPresented = true
+            }
+        }
+        let others = templates.filter { $0 != template }
+        if !others.isEmpty {
+            Menu {
+                ForEach(others) { other in
+                    Button {
+                        template.importAlarms(from: other)
+                    } label: {
+                        Text(other.name)
+                        Text(other.enabledAlarmTimes)
+                    }
+                }
+            } label: {
+                Label("他のテンプレートから取り込む", systemImage: "square.and.arrow.down")
+            }
+            .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
+        }
+    }
 }
 
 private struct AlarmRow: View {
@@ -201,17 +237,89 @@ private struct AlarmRow: View {
 
     var body: some View {
         Toggle(isOn: $alarm.isEnabled) {
-            VStack(alignment: .leading) {
-                Text(alarm.timeText)
-                    .font(.system(size: 36, weight: .light, design: .rounded))
-                    .monospacedDigit()
-                if !alarm.label.isEmpty {
-                    Text(alarm.label)
-                        .font(.caption)
+            AlarmTimeLabel(timeText: alarm.timeText, label: alarm.label, isEnabled: alarm.isEnabled)
+        }
+    }
+}
+
+private struct AlarmTimeLabel: View {
+    let timeText: String
+    let label: String
+    let isEnabled: Bool
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text(timeText)
+                .font(.system(size: 36, weight: .light, design: .rounded))
+                .monospacedDigit()
+            if !label.isEmpty {
+                Text(label)
+                    .font(.caption)
+            }
+        }
+        .foregroundStyle(isEnabled ? .primary : .secondary)
+    }
+}
+
+/// 選択モードで使う、左に丸いチェックが付いた行。
+struct SelectableRow<Content: View>: View {
+    let isSelected: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title2)
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            content
+            Spacer()
+        }
+        .contentShape(.rect)
+    }
+}
+
+/// 選択モードのとき下部に「すべて選択」と「削除」を出す。削除の前に確認する。
+private struct SelectionDeleteBar: ViewModifier {
+    let isSelecting: Bool
+    @Binding var selection: Set<PersistentIdentifier>
+    let allIDs: [PersistentIdentifier]
+    let onDelete: () -> Void
+
+    @State private var isConfirming = false
+
+    func body(content: Content) -> some View {
+        content
+            .toolbar {
+                if isSelecting {
+                    ToolbarItem(placement: .bottomBar) {
+                        let isAllSelected = !allIDs.isEmpty && selection.count == allIDs.count
+                        Button(isAllSelected ? "選択解除" : "すべて選択") {
+                            selection = isAllSelected ? [] : Set(allIDs)
+                        }
+                    }
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        Button(selection.isEmpty ? "削除" : "\(selection.count)件を削除", role: .destructive) {
+                            isConfirming = true
+                        }
+                        .disabled(selection.isEmpty)
+                    }
                 }
             }
-            .foregroundStyle(alarm.isEnabled ? .primary : .secondary)
-        }
+            .confirmationDialog("\(selection.count)件のアラームを削除しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
+                Button("削除", role: .destructive, action: onDelete)
+            }
+    }
+}
+
+extension View {
+    func selectionDeleteBar(
+        isSelecting: Bool,
+        selection: Binding<Set<PersistentIdentifier>>,
+        allIDs: [PersistentIdentifier],
+        onDelete: @escaping () -> Void
+    ) -> some View {
+        modifier(SelectionDeleteBar(isSelecting: isSelecting, selection: selection, allIDs: allIDs, onDelete: onDelete))
     }
 }
 

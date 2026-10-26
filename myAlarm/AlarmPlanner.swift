@@ -34,6 +34,20 @@ enum AlarmPlanner {
     /// AlarmKit に登録しておく日数。アプリを開くたびに先へ延長される。
     static let horizonDays = 14
 
+    /// 「起きた」で止める範囲。この間隔以内で続けて鳴るアラームをひと続きとみなす。
+    static let seriesGap: TimeInterval = 60 * 60
+
+    /// anchor から seriesGap 以内の間隔で続けて鳴るアラームのうち、最後の時刻。
+    /// 続くアラームがなければ anchor を返す。
+    static func seriesEnd(from anchor: Date, in alarms: [PlannedAlarm]) -> Date {
+        var last = anchor
+        for alarm in alarms.sorted(by: { $0.date < $1.date }) where alarm.date >= anchor {
+            guard alarm.date.timeIntervalSince(last) <= seriesGap else { break }
+            last = alarm.date
+        }
+        return last
+    }
+
     static func plans(
         days: Int,
         from now: Date = .now,

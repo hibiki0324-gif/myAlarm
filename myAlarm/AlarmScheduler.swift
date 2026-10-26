@@ -1,4 +1,5 @@
 import AlarmKit
+import AppIntents
 import BackgroundTasks
 import Foundation
 import SwiftData
@@ -6,8 +7,19 @@ import SwiftUI
 
 nonisolated struct ShiftAlarmMetadata: AlarmMetadata {}
 
+/// 鳴っているアラームの「起きた」ボタンで実行され、続けて鳴る予定のアラームを止める。
+nonisolated struct WakeUpIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "起きた"
+
+    func perform() async throws -> some IntentResult {
+        await AlarmScheduler.shared.markAwake(from: .now)
+        return .result()
+    }
+}
+
 /// SwiftData の内容から今後のアラームを計算し、AlarmKit の登録内容と同期する。
 /// 同期のたびに既存のアラームをすべて取り消して登録し直す。
+/// 「起きた」で止めた時刻（suppressedUntil）までのアラームは登録しない。
 @Observable
 final class AlarmScheduler {
     static let shared = AlarmScheduler()
@@ -17,15 +29,51 @@ final class AlarmScheduler {
     private(set) var scheduledCount = 0
     private(set) var scheduledUntil: Date?
     private(set) var lastError: String?
+    /// この時刻までのアラームは鳴らさない
+    private(set) var suppressedUntil: Date? = UserDefaults.standard.object(forKey: suppressedUntilKey) as? Date
 
+    private static let suppressedUntilKey = "suppressedUntil"
     private let manager = AlarmManager.shared
-    private var container: ModelContainer?
     private var debounceTask: Task<Void, Never>?
     private var isSyncing = false
     private var needsSync = false
 
-    func configure(container: ModelContainer) {
-        self.container = container
+    /// 今止めている範囲。過ぎていれば nil。
+    var activeSuppression: Date? {
+        guard let suppressedUntil, suppressedUntil > .now else { return nil }
+        return suppressedUntil
+    }
+
+    /// anchor から続けて鳴る予定のアラームを止める。
+    func markAwake(from anchor: Date) async {
+        let alarms = upcomingPlans(from: .now).flatMap(\.alarms)
+        setSuppressedUntil(AlarmPlanner.seriesEnd(from: anchor, in: alarms))
+        await syncNow()
+    }
+
+    /// 止めていたアラームを元に戻す。
+    func clearSuppression() async {
+        setSuppressedUntil(nil)
+        await syncNow()
+    }
+
+    private func setSuppressedUntil(_ date: Date?) {
+        suppressedUntil = date
+        UserDefaults.standard.set(date, forKey: Self.suppressedUntilKey)
+    }
+
+    private func upcomingPlans(from now: Date) -> [DayPlan] {
+        let context = AppData.container.mainContext
+        let templates = (try? context.fetch(FetchDescriptor<AlarmTemplate>())) ?? []
+        let reservations = (try? context.fetch(FetchDescriptor<ShiftReservation>())) ?? []
+        let oneOffs = (try? context.fetch(FetchDescriptor<OneOffAlarm>())) ?? []
+        return AlarmPlanner.plans(
+            days: AlarmPlanner.horizonDays,
+            from: now,
+            templates: templates,
+            reservations: reservations,
+            oneOffs: oneOffs
+        )
     }
 
     /// 編集中の連続した変更をまとめるため、少し待ってから同期する。
@@ -64,21 +112,12 @@ final class AlarmScheduler {
     }
 
     private func performSync() async {
-        guard let context = container?.mainContext else { return }
         guard await requestAuthorizationIfNeeded() else { return }
 
         let now = Date.now
-        let templates = (try? context.fetch(FetchDescriptor<AlarmTemplate>())) ?? []
-        let reservations = (try? context.fetch(FetchDescriptor<ShiftReservation>())) ?? []
-        let oneOffs = (try? context.fetch(FetchDescriptor<OneOffAlarm>())) ?? []
-        let plans = AlarmPlanner.plans(
-            days: AlarmPlanner.horizonDays,
-            from: now,
-            templates: templates,
-            reservations: reservations,
-            oneOffs: oneOffs
-        )
-        let upcoming = plans.flatMap(\.alarms).filter { $0.date > now }
+        let plans = upcomingPlans(from: now)
+        let notBefore = max(now, activeSuppression ?? now)
+        let upcoming = plans.flatMap(\.alarms).filter { $0.date > notBefore }
 
         do {
             for alarm in try manager.alarms {
@@ -97,11 +136,17 @@ final class AlarmScheduler {
 
     private func configuration(for planned: PlannedAlarm) -> AlarmManager.AlarmConfiguration<ShiftAlarmMetadata> {
         let stopButton = AlarmButton(text: "停止", textColor: .white, systemImageName: "stop.circle")
-        let alert = AlarmPresentation.Alert(title: LocalizedStringResource(stringLiteral: planned.title), stopButton: stopButton)
+        let wakeUpButton = AlarmButton(text: "起きた", textColor: .white, systemImageName: "sun.max.fill")
+        let alert = AlarmPresentation.Alert(
+            title: LocalizedStringResource(stringLiteral: planned.title),
+            stopButton: stopButton,
+            secondaryButton: wakeUpButton,
+            secondaryButtonBehavior: .custom
+        )
         let attributes = AlarmAttributes<ShiftAlarmMetadata>(
             presentation: AlarmPresentation(alert: alert),
             tintColor: planned.color.color
         )
-        return .alarm(schedule: .fixed(planned.date), attributes: attributes)
+        return .alarm(schedule: .fixed(planned.date), attributes: attributes, secondaryIntent: WakeUpIntent())
     }
 }

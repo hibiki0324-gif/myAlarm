@@ -81,7 +81,9 @@ struct ScheduleView: View {
             reservations: reservations,
             oneOffs: oneOffs
         )
-        if let next = plans.flatMap(\.alarms).first(where: { $0.date > .now }) {
+        let alarms = plans.flatMap(\.alarms)
+        let notBefore = max(Date.now, scheduler.activeSuppression ?? .now)
+        if let next = alarms.first(where: { $0.date > notBefore }) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("次のアラーム")
                     .font(.caption)
@@ -98,6 +100,33 @@ struct ScheduleView: View {
         } else {
             Text("予定されているアラームはありません")
                 .foregroundStyle(.secondary)
+        }
+
+        if let until = scheduler.activeSuppression {
+            HStack {
+                Label("\(until.formatted(.dateTime.hour().minute()))までのアラームを止めています", systemImage: "sun.max.fill")
+                    .font(.subheadline)
+                Spacer()
+                Button("元に戻す") {
+                    Task { await scheduler.clearSuppression() }
+                }
+                .buttonStyle(.borderless)
+            }
+        } else if let next = alarms.first(where: { $0.date > .now }) {
+            let end = AlarmPlanner.seriesEnd(from: next.date, in: alarms)
+            let count = alarms.filter { $0.date >= next.date && $0.date <= end }.count
+            Button {
+                Task { await scheduler.markAwake(from: next.date) }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Label("起きた（次のアラームをまとめて止める）", systemImage: "sun.max.fill")
+                    Text(count == 1
+                         ? "\(next.date.formatted(.dateTime.hour().minute()))の1件を止めます"
+                         : "\(next.date.formatted(.dateTime.hour().minute()))〜\(end.formatted(.dateTime.hour().minute()))の\(count)件を止めます")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 

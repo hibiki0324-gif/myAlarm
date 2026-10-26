@@ -25,6 +25,8 @@ xcodebuild -project myAlarm.xcodeproj -scheme myAlarm \
 - **14 日先まで登録する方式**: iOS ではアプリが指定日に自分で切り替えられないため、`AlarmPlanner.horizonDays`（14 日）先までの日付指定アラームをまとめて登録しておく。同期のたびに既存のアラームをすべて取り消して登録し直す。新しい機能もこの方式を前提に考える。
 - 同期のきっかけ: `ContentView.dataSignature` の変化、アプリがアクティブになったとき、バックグラウンド更新（`com.imamurahibiki.myAlarm.refresh`）。
   - **アラームに影響するプロパティをモデルに追加したら、`dataSignature` にも追加すること。** 追加しないと変更が AlarmKit に反映されない。
+- SwiftData のコンテナは `AppData.container`（MyAlarmApp.swift）で共有する。アラームの「起きた」ボタン（`WakeUpIntent`）からアプリが裏で起動されたときもこれを使う。
+- 「起きた」で止めた範囲は `AlarmScheduler.suppressedUntil`（UserDefaults に保存）で持つ。この時刻までのアラームは同期時に登録しない。止める範囲は `AlarmPlanner.seriesEnd`（間隔 `seriesGap` 以内で連なるアラーム）で決める。
 - 優先順位: 予約（`ShiftReservation`）> 基本テンプレート（`isActive` の `AlarmTemplate`）。予約の `template == nil` は「休み」。
 - `Info.plist` に `NSAlarmKitUsageDescription` とバックグラウンド更新の ID がある。ID を変えるときは `AlarmScheduler.refreshTaskID` と両方を直す。
 
