@@ -6,14 +6,12 @@
 
 - ユーザーとの会話、コードのコメント、UI の文言、コミットメッセージはすべて日本語。
 - 実機は iPhone 12（iOS 26）。AlarmKit の鳴動はシミュレータでは確認しづらいので、アラームまわりの変更は実機での確認をユーザーに依頼する。
+- 署名は無料アカウント（Personal Team）なので、実機に入れたアプリは 7 日で起動できなくなる。週 1 回は Xcode から入れ直す必要がある。
 
 ## ビルド
 
-`xcode-select` がコマンドラインツールを指しているため、`DEVELOPER_DIR` を付けて実行する。
-
 ```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcodebuild -project myAlarm.xcodeproj -scheme myAlarm \
+xcodebuild -project myAlarm.xcodeproj -scheme myAlarm \
   -destination 'generic/platform=iOS Simulator' -quiet build
 ```
 
