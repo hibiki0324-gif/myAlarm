@@ -1,20 +1,25 @@
 import SwiftData
 import SwiftUI
 
+/// アプリ全体で共有する SwiftData のコンテナ。アラームのボタンから起動されたときにも使う。
+enum AppData {
+    static let container: ModelContainer = {
+        do {
+            return try ModelContainer(for: AlarmTemplate.self, TemplateAlarm.self, ShiftReservation.self, OneOffAlarm.self)
+        } catch {
+            fatalError("データベースを開けませんでした: \(error)")
+        }
+    }()
+}
+
 @main
 struct MyAlarmApp: App {
-    private let container: ModelContainer
+    private let container = AppData.container
     @State private var scheduler = AlarmScheduler.shared
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        do {
-            container = try ModelContainer(for: AlarmTemplate.self, TemplateAlarm.self, ShiftReservation.self, OneOffAlarm.self)
-        } catch {
-            fatalError("データベースを開けませんでした: \(error)")
-        }
         SampleData.seedIfNeeded(container.mainContext)
-        AlarmScheduler.shared.configure(container: container)
     }
 
     var body: some Scene {

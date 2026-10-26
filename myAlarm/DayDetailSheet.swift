@@ -11,6 +11,10 @@ struct DayDetailSheet: View {
     @Query private var reservations: [ShiftReservation]
     @Query private var oneOffs: [OneOffAlarm]
     @State private var editing: AlarmEditTarget<OneOffAlarm>?
+    @State private var isBulkInputPresented = false
+    @State private var isBulkLabelPresented = false
+    @State private var isSelecting = false
+    @State private var selection: Set<PersistentIdentifier> = []
 
     var body: some View {
         let plan = AlarmPlanner.plans(days: 1, from: day, templates: templates, reservations: reservations, oneOffs: oneOffs).first
@@ -50,25 +54,47 @@ struct DayDetailSheet: View {
 
                 Section {
                     ForEach(plan?.oneOffs ?? []) { oneOff in
-                        LabeledContent {
-                            Text(oneOff.label)
-                        } label: {
-                            Text(oneOff.timeText)
-                                .font(.title3)
-                                .monospacedDigit()
+                        if isSelecting {
+                            SelectableRow(isSelected: selection.contains(oneOff.persistentModelID)) {
+                                oneOffLabel(oneOff)
+                            }
+                            .onTapGesture { selection.formSymmetricDifference([oneOff.persistentModelID]) }
+                        } else {
+                            oneOffLabel(oneOff)
+                                .contentShape(.rect)
+                                .onTapGesture { editing = .existing(oneOff) }
                         }
-                        .contentShape(.rect)
-                        .onTapGesture { editing = .existing(oneOff) }
                     }
                     .onDelete { offsets in
                         let sorted = plan?.oneOffs ?? []
                         for index in offsets { context.delete(sorted[index]) }
                     }
-                    Button("アラームを追加", systemImage: "plus.circle.fill") {
-                        editing = .new
+                    if !isSelecting {
+                        Button("アラームを追加", systemImage: "plus.circle.fill") {
+                            editing = .new
+                        }
+                        Button("時間帯でまとめて追加", systemImage: "list.bullet.indent") {
+                            isBulkInputPresented = true
+                        }
+                        if !(plan?.oneOffs ?? []).isEmpty {
+                            Button("ラベルをまとめて設定", systemImage: "tag") {
+                                isBulkLabelPresented = true
+                            }
+                        }
                     }
                 } header: {
-                    Text("この日だけのアラーム")
+                    HStack {
+                        Text("この日だけのアラーム")
+                        Spacer()
+                        if isSelecting || !(plan?.oneOffs ?? []).isEmpty {
+                            Button(isSelecting ? "選択をやめる" : "選択") {
+                                isSelecting.toggle()
+                                selection = []
+                            }
+                            .font(.subheadline)
+                            .textCase(nil)
+                        }
+                    }
                 } footer: {
                     Text("テンプレートのアラームに加えて鳴ります。")
                 }
@@ -79,6 +105,17 @@ struct DayDetailSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完了", systemImage: "checkmark") { dismiss() }
                 }
+            }
+            .selectionDeleteBar(
+                isSelecting: isSelecting,
+                selection: $selection,
+                allIDs: (plan?.oneOffs ?? []).map(\.persistentModelID)
+            ) {
+                for oneOff in plan?.oneOffs ?? [] where selection.contains(oneOff.persistentModelID) {
+                    context.delete(oneOff)
+                }
+                selection = []
+                isSelecting = false
             }
             .sheet(item: $editing) { target in
                 switch target {
@@ -94,8 +131,38 @@ struct DayDetailSheet: View {
                     }
                 }
             }
+            .sheet(isPresented: $isBulkInputPresented) {
+                BulkAlarmInputSheet { times, label in
+                    addOneOffs(times, label: label)
+                }
+            }
+            .bulkLabelAlert(isPresented: $isBulkLabelPresented, message: "この日だけのアラームのラベルを変更します。") { label, onlyEmpty in
+                for oneOff in oneOffs where Calendar.current.isDate(oneOff.day, inSameDayAs: day) && (!onlyEmpty || oneOff.label.isEmpty) {
+                    oneOff.label = label
+                }
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    /// 同じ時刻の単発アラームがなければ追加する。
+    private func addOneOffs(_ times: [(hour: Int, minute: Int)], label: String) {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        let existing = Set(oneOffs.filter { calendar.isDate($0.day, inSameDayAs: day) }.map { $0.hour * 60 + $0.minute })
+        for time in times where !existing.contains(time.hour * 60 + time.minute) {
+            context.insert(OneOffAlarm(day: start, hour: time.hour, minute: time.minute, label: label))
+        }
+    }
+
+    private func oneOffLabel(_ oneOff: OneOffAlarm) -> some View {
+        LabeledContent {
+            Text(oneOff.label)
+        } label: {
+            Text(oneOff.timeText)
+                .font(.title3)
+                .monospacedDigit()
+        }
     }
 
     private var currentChoice: DayChoice {
