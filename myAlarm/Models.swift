@@ -69,6 +69,81 @@ final class ShiftReservation {
     }
 }
 
+/// 特定の日だけ鳴る単発アラーム。その日のテンプレートのアラームに加えて鳴る。
+@Model
+final class OneOffAlarm {
+    /// その日の 0:00
+    var day: Date
+    var hour: Int
+    var minute: Int
+    var label: String
+
+    static let color: TemplateColor = .red
+
+    init(day: Date, hour: Int, minute: Int, label: String = "") {
+        self.day = day
+        self.hour = hour
+        self.minute = minute
+        self.label = label
+    }
+
+    var timeText: String { String(format: "%d:%02d", hour, minute) }
+    var title: String { label.isEmpty ? "単発アラーム" : label }
+}
+
+/// ある日に何を使うかの選択。
+enum DayChoice: Hashable {
+    /// 予約しない（基本テンプレートに従う）
+    case base
+    /// 休み（テンプレートのアラームなし）
+    case off
+    case template(AlarmTemplate)
+
+    init(reservation: ShiftReservation?) {
+        if let reservation {
+            self = reservation.template.map(DayChoice.template) ?? .off
+        } else {
+            self = .base
+        }
+    }
+}
+
+enum ReservationEditor {
+    /// 日ごとの選択を予約に反映する。同じ日の既存の予約は上書きする。
+    static func apply(
+        _ assignments: [(day: Date, choice: DayChoice)],
+        reservations: [ShiftReservation],
+        context: ModelContext,
+        calendar: Calendar = .current
+    ) {
+        var byDay = Dictionary(
+            reservations.map { (calendar.startOfDay(for: $0.day), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for (day, choice) in assignments {
+            let day = calendar.startOfDay(for: day)
+            switch choice {
+            case .base:
+                if let existing = byDay.removeValue(forKey: day) { context.delete(existing) }
+            case .off, .template:
+                let reservation: ShiftReservation
+                if let existing = byDay[day] {
+                    reservation = existing
+                } else {
+                    reservation = ShiftReservation(day: day)
+                    context.insert(reservation)
+                    byDay[day] = reservation
+                }
+                if case .template(let template) = choice {
+                    reservation.template = template
+                } else {
+                    reservation.template = nil
+                }
+            }
+        }
+    }
+}
+
 enum TemplateColor: String, CaseIterable, Identifiable {
     case blue, orange, indigo, green, pink, teal, red, gray
 

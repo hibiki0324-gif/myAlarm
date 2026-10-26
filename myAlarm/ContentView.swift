@@ -6,6 +6,7 @@ struct ContentView: View {
     @Query private var templates: [AlarmTemplate]
     @Query private var alarms: [TemplateAlarm]
     @Query private var reservations: [ShiftReservation]
+    @Query private var oneOffs: [OneOffAlarm]
 
     var body: some View {
         TabView {
@@ -41,6 +42,13 @@ struct ContentView: View {
         for reservation in reservations.sorted(by: { $0.day < $1.day }) {
             hasher.combine(reservation.day)
             hasher.combine(reservation.template?.persistentModelID)
+        }
+        for oneOff in oneOffs.sorted(by: { $0.persistentModelID.hashValue < $1.persistentModelID.hashValue }) {
+            hasher.combine(oneOff.persistentModelID)
+            hasher.combine(oneOff.day)
+            hasher.combine(oneOff.hour)
+            hasher.combine(oneOff.minute)
+            hasher.combine(oneOff.label)
         }
         return hasher.finalize()
     }

@@ -1,0 +1,133 @@
+import SwiftData
+import SwiftUI
+
+/// 1 日分の予定を編集するシート。テンプレートの予約と、その日だけの単発アラームを扱う。
+struct DayDetailSheet: View {
+    let day: Date
+
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \AlarmTemplate.createdAt) private var templates: [AlarmTemplate]
+    @Query private var reservations: [ShiftReservation]
+    @Query private var oneOffs: [OneOffAlarm]
+    @State private var editing: AlarmEditTarget<OneOffAlarm>?
+
+    var body: some View {
+        let plan = AlarmPlanner.plans(days: 1, from: day, templates: templates, reservations: reservations, oneOffs: oneOffs).first
+
+        NavigationStack {
+            Form {
+                Section {
+                    choiceRow(.base, title: baseTitle)
+                    ForEach(templates) { template in
+                        choiceRow(.template(template), title: template.name, color: template.color.color)
+                    }
+                    choiceRow(.off, title: "休み（アラームなし）")
+                } header: {
+                    Text("テンプレート")
+                }
+
+                Section {
+                    let alarms = plan?.template?.sortedAlarms.filter(\.isEnabled) ?? []
+                    if alarms.isEmpty {
+                        Text("なし")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(alarms) { alarm in
+                        LabeledContent {
+                            Text(alarm.label)
+                        } label: {
+                            Text(alarm.timeText)
+                                .font(.title3)
+                                .monospacedDigit()
+                        }
+                    }
+                } header: {
+                    Text("テンプレートのアラーム")
+                } footer: {
+                    Text("テンプレートの内容は「テンプレート」タブで変更できます。")
+                }
+
+                Section {
+                    ForEach(plan?.oneOffs ?? []) { oneOff in
+                        LabeledContent {
+                            Text(oneOff.label)
+                        } label: {
+                            Text(oneOff.timeText)
+                                .font(.title3)
+                                .monospacedDigit()
+                        }
+                        .contentShape(.rect)
+                        .onTapGesture { editing = .existing(oneOff) }
+                    }
+                    .onDelete { offsets in
+                        let sorted = plan?.oneOffs ?? []
+                        for index in offsets { context.delete(sorted[index]) }
+                    }
+                    Button("アラームを追加", systemImage: "plus.circle.fill") {
+                        editing = .new
+                    }
+                } header: {
+                    Text("この日だけのアラーム")
+                } footer: {
+                    Text("テンプレートのアラームに加えて鳴ります。")
+                }
+            }
+            .navigationTitle(day.formatted(.dateTime.month().day().weekday(.abbreviated)))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完了", systemImage: "checkmark") { dismiss() }
+                }
+            }
+            .sheet(item: $editing) { target in
+                switch target {
+                case .new:
+                    AlarmEditSheet(isNew: true) { hour, minute, label in
+                        context.insert(OneOffAlarm(day: Calendar.current.startOfDay(for: day), hour: hour, minute: minute, label: label))
+                    }
+                case .existing(let oneOff):
+                    AlarmEditSheet(isNew: false, hour: oneOff.hour, minute: oneOff.minute, label: oneOff.label) { hour, minute, label in
+                        oneOff.hour = hour
+                        oneOff.minute = minute
+                        oneOff.label = label
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var currentChoice: DayChoice {
+        DayChoice(reservation: reservations.first { Calendar.current.isDate($0.day, inSameDayAs: day) })
+    }
+
+    private var baseTitle: String {
+        if let base = templates.first(where: \.isActive) {
+            return "基本テンプレート（\(base.name)）"
+        }
+        return "基本テンプレート（なし）"
+    }
+
+    private func choiceRow(_ choice: DayChoice, title: String, color: Color? = nil) -> some View {
+        Button {
+            ReservationEditor.apply([(day, choice)], reservations: reservations, context: context)
+        } label: {
+            HStack {
+                if let color {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 12, height: 12)
+                }
+                Text(title)
+                Spacer()
+                if currentChoice == choice {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                }
+            }
+            .contentShape(.rect)
+        }
+        .tint(.primary)
+    }
+}

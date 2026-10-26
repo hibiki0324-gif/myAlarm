@@ -70,7 +70,14 @@ final class AlarmScheduler {
         let now = Date.now
         let templates = (try? context.fetch(FetchDescriptor<AlarmTemplate>())) ?? []
         let reservations = (try? context.fetch(FetchDescriptor<ShiftReservation>())) ?? []
-        let plans = AlarmPlanner.plans(days: AlarmPlanner.horizonDays, from: now, templates: templates, reservations: reservations)
+        let oneOffs = (try? context.fetch(FetchDescriptor<OneOffAlarm>())) ?? []
+        let plans = AlarmPlanner.plans(
+            days: AlarmPlanner.horizonDays,
+            from: now,
+            templates: templates,
+            reservations: reservations,
+            oneOffs: oneOffs
+        )
         let upcoming = plans.flatMap(\.alarms).filter { $0.date > now }
 
         do {

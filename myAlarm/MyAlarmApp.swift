@@ -9,7 +9,7 @@ struct MyAlarmApp: App {
 
     init() {
         do {
-            container = try ModelContainer(for: AlarmTemplate.self, TemplateAlarm.self, ShiftReservation.self)
+            container = try ModelContainer(for: AlarmTemplate.self, TemplateAlarm.self, ShiftReservation.self, OneOffAlarm.self)
         } catch {
             fatalError("データベースを開けませんでした: \(error)")
         }
