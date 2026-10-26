@@ -12,6 +12,7 @@ struct DayDetailSheet: View {
     @Query private var oneOffs: [OneOffAlarm]
     @State private var editing: AlarmEditTarget<OneOffAlarm>?
     @State private var isBulkInputPresented = false
+    @State private var isBulkLabelPresented = false
 
     var body: some View {
         let plan = AlarmPlanner.plans(days: 1, from: day, templates: templates, reservations: reservations, oneOffs: oneOffs).first
@@ -71,6 +72,11 @@ struct DayDetailSheet: View {
                     Button("時間帯でまとめて追加", systemImage: "list.bullet.indent") {
                         isBulkInputPresented = true
                     }
+                    if !(plan?.oneOffs ?? []).isEmpty {
+                        Button("ラベルをまとめて設定", systemImage: "tag") {
+                            isBulkLabelPresented = true
+                        }
+                    }
                 } header: {
                     Text("この日だけのアラーム")
                 } footer: {
@@ -101,6 +107,11 @@ struct DayDetailSheet: View {
             .sheet(isPresented: $isBulkInputPresented) {
                 BulkAlarmInputSheet { times, label in
                     addOneOffs(times, label: label)
+                }
+            }
+            .bulkLabelAlert(isPresented: $isBulkLabelPresented, message: "この日だけのアラームのラベルを変更します。") { label, onlyEmpty in
+                for oneOff in oneOffs where Calendar.current.isDate(oneOff.day, inSameDayAs: day) && (!onlyEmpty || oneOff.label.isEmpty) {
+                    oneOff.label = label
                 }
             }
         }

@@ -81,11 +81,15 @@ struct TemplateEditView: View {
     @Query(sort: \AlarmTemplate.createdAt) private var templates: [AlarmTemplate]
     @State private var editing: AlarmEditTarget<TemplateAlarm>?
     @State private var isBulkInputPresented = false
+    @State private var isBulkLabelPresented = false
+    @FocusState private var isNameFocused: Bool
 
     var body: some View {
         Form {
             Section("名前") {
                 TextField("例: 日勤", text: $template.name)
+                    .focused($isNameFocused)
+                    .submitLabel(.done)
             }
 
             Section("色") {
@@ -102,7 +106,10 @@ struct TemplateEditView: View {
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .onTapGesture { template.color = color }
+                            .onTapGesture {
+                                isNameFocused = false
+                                template.color = color
+                            }
                     }
                 }
                 .padding(.vertical, 4)
@@ -113,16 +120,25 @@ struct TemplateEditView: View {
                     AlarmRow(alarm: alarm)
                         .contentShape(.rect)
                         .onTapGesture { editing = .existing(alarm) }
+                        .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
                 }
                 .onDelete { offsets in
                     let sorted = template.sortedAlarms
                     for index in offsets { context.delete(sorted[index]) }
                 }
                 Button("アラームを追加", systemImage: "plus.circle.fill") {
+                    isNameFocused = false
                     editing = .new
                 }
                 Button("時間帯でまとめて追加", systemImage: "list.bullet.indent") {
+                    isNameFocused = false
                     isBulkInputPresented = true
+                }
+                if !template.alarms.isEmpty {
+                    Button("ラベルをまとめて設定", systemImage: "tag") {
+                        isNameFocused = false
+                        isBulkLabelPresented = true
+                    }
                 }
                 let others = templates.filter { $0 != template }
                 if !others.isEmpty {
@@ -138,11 +154,19 @@ struct TemplateEditView: View {
                     } label: {
                         Label("他のテンプレートから取り込む", systemImage: "square.and.arrow.down")
                     }
+                    .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
                 }
             }
         }
+        .scrollDismissesKeyboard(.immediately)
         .navigationTitle(template.name.isEmpty ? "テンプレート" : template.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完了") { isNameFocused = false }
+            }
+        }
         .sheet(item: $editing) { target in
             switch target {
             case .new:
@@ -162,6 +186,11 @@ struct TemplateEditView: View {
                 for time in times {
                     template.addAlarm(hour: time.hour, minute: time.minute, label: label)
                 }
+            }
+        }
+        .bulkLabelAlert(isPresented: $isBulkLabelPresented, message: "このテンプレートのアラームのラベルを変更します。") { label, onlyEmpty in
+            for alarm in template.alarms where !onlyEmpty || alarm.label.isEmpty {
+                alarm.label = label
             }
         }
     }
@@ -242,5 +271,31 @@ struct AlarmEditSheet: View {
             }
         }
         .presentationDetents([.medium])
+    }
+}
+
+/// アラームのラベルをまとめて設定するアラート。
+private struct BulkLabelAlert: ViewModifier {
+    @Binding var isPresented: Bool
+    let message: String
+    let onApply: (_ label: String, _ onlyEmpty: Bool) -> Void
+
+    @State private var label = ""
+
+    func body(content: Content) -> some View {
+        content.alert("ラベルをまとめて設定", isPresented: $isPresented) {
+            TextField("ラベル", text: $label)
+            Button("すべてに設定") { onApply(label, false) }
+            Button("空欄のものだけに設定") { onApply(label, true) }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text(message + "空欄のまま「すべてに設定」するとラベルを消せます。")
+        }
+    }
+}
+
+extension View {
+    func bulkLabelAlert(isPresented: Binding<Bool>, message: String, onApply: @escaping (_ label: String, _ onlyEmpty: Bool) -> Void) -> some View {
+        modifier(BulkLabelAlert(isPresented: isPresented, message: message, onApply: onApply))
     }
 }

@@ -4,6 +4,11 @@ import SwiftUI
 struct BulkAlarmInputSheet: View {
     /// 一度に追加できる件数の上限。誤って大量に作らないようにする。
     static let maxCount = 60
+    static let intervals = [1, 2, 3, 5, 10, 15, 20, 30, 45, 60, 90, 120]
+
+    private enum TimeField {
+        case start, end
+    }
 
     @Environment(\.dismiss) private var dismiss
     let onSave: (_ times: [(hour: Int, minute: Int)], _ label: String) -> Void
@@ -12,16 +17,20 @@ struct BulkAlarmInputSheet: View {
     @State private var end = Self.time(hour: 6, minute: 30)
     @State private var interval = 5
     @State private var label = ""
+    @State private var expanded: TimeField?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    DatePicker("開始時刻", selection: $start, displayedComponents: .hourAndMinute)
-                    DatePicker("終了時刻", selection: $end, displayedComponents: .hourAndMinute)
-                    Stepper(value: $interval, in: 1...120) {
-                        LabeledContent("間隔", value: "\(interval)分おき")
+                    timeRow("開始時刻", selection: $start, field: .start)
+                    timeRow("終了時刻", selection: $end, field: .end)
+                    Picker("間隔", selection: $interval) {
+                        ForEach(Self.intervals, id: \.self) { minutes in
+                            Text("\(minutes)分おき").tag(minutes)
+                        }
                     }
+                    .pickerStyle(.menu)
                     TextField("ラベル（任意）", text: $label)
                 } footer: {
                     Text(summary)
@@ -42,7 +51,33 @@ struct BulkAlarmInputSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
+    }
+
+    /// タップするとホイールが開き、「決定」で閉じる時刻の行。
+    @ViewBuilder
+    private func timeRow(_ title: String, selection: Binding<Date>, field: TimeField) -> some View {
+        let isExpanded = expanded == field
+        Button {
+            withAnimation { expanded = isExpanded ? nil : field }
+        } label: {
+            LabeledContent(title) {
+                Text(selection.wrappedValue, format: .dateTime.hour().minute())
+                    .monospacedDigit()
+                    .foregroundStyle(isExpanded ? Color.accentColor : Color.primary)
+            }
+        }
+        .tint(.primary)
+        if isExpanded {
+            DatePicker(title, selection: selection, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+            Button("決定", systemImage: "checkmark.circle.fill") {
+                withAnimation { expanded = nil }
+            }
+            .frame(maxWidth: .infinity)
+        }
     }
 
     /// 開始から終了まで（終了時刻を含む）の時刻。日をまたぐ指定は扱わない。
