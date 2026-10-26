@@ -11,6 +11,7 @@ struct DayDetailSheet: View {
     @Query private var reservations: [ShiftReservation]
     @Query private var oneOffs: [OneOffAlarm]
     @State private var editing: AlarmEditTarget<OneOffAlarm>?
+    @State private var isBulkInputPresented = false
 
     var body: some View {
         let plan = AlarmPlanner.plans(days: 1, from: day, templates: templates, reservations: reservations, oneOffs: oneOffs).first
@@ -67,6 +68,9 @@ struct DayDetailSheet: View {
                     Button("アラームを追加", systemImage: "plus.circle.fill") {
                         editing = .new
                     }
+                    Button("時間帯でまとめて追加", systemImage: "list.bullet.indent") {
+                        isBulkInputPresented = true
+                    }
                 } header: {
                     Text("この日だけのアラーム")
                 } footer: {
@@ -94,8 +98,23 @@ struct DayDetailSheet: View {
                     }
                 }
             }
+            .sheet(isPresented: $isBulkInputPresented) {
+                BulkAlarmInputSheet { times, label in
+                    addOneOffs(times, label: label)
+                }
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    /// 同じ時刻の単発アラームがなければ追加する。
+    private func addOneOffs(_ times: [(hour: Int, minute: Int)], label: String) {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        let existing = Set(oneOffs.filter { calendar.isDate($0.day, inSameDayAs: day) }.map { $0.hour * 60 + $0.minute })
+        for time in times where !existing.contains(time.hour * 60 + time.minute) {
+            context.insert(OneOffAlarm(day: start, hour: time.hour, minute: time.minute, label: label))
+        }
     }
 
     private var currentChoice: DayChoice {

@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// 週・月・期間を指定して、テンプレートや繰り返しパターンをまとめて予約するシート。
+/// 週・月・期間を指定して、テンプレートや繰り返しパターン、曜日指定でまとめて予約するシート。
 struct BulkApplySheet: View {
     enum RangeUnit: String, CaseIterable, Identifiable {
         case week = "週"
@@ -13,7 +13,8 @@ struct BulkApplySheet: View {
 
     enum Mode: String, CaseIterable, Identifiable {
         case single = "同じ内容"
-        case pattern = "繰り返しパターン"
+        case pattern = "パターン"
+        case weekday = "曜日を選ぶ"
 
         var id: Self { self }
     }
@@ -29,6 +30,9 @@ struct BulkApplySheet: View {
     @State private var mode: Mode = .single
     @State private var single: DayChoice = .off
     @State private var pattern: [DayChoice] = []
+    /// Calendar の weekday（1 = 日曜 … 7 = 土曜）。初期値は月〜金。
+    @State private var weekdays: Set<Int> = [2, 3, 4, 5, 6]
+    @State private var weekdayChoice: DayChoice = .off
 
     private let calendar = Calendar.current
 
@@ -82,6 +86,9 @@ struct BulkApplySheet: View {
                         Button("日を追加", systemImage: "plus.circle.fill") {
                             pattern.append(pattern.last ?? .off)
                         }
+                    case .weekday:
+                        weekdayToggles
+                        choicePicker("設定する内容", selection: $weekdayChoice)
                     }
                 } header: {
                     Text("設定する内容")
@@ -100,12 +107,13 @@ struct BulkApplySheet: View {
                         apply()
                         dismiss()
                     }
-                    .disabled(choices.isEmpty || editableDays.isEmpty)
+                    .disabled(assignments.isEmpty)
                 }
             }
             .onAppear {
                 if pattern.isEmpty, let first = templates.first {
                     pattern = [.template(first), .template(first), .off]
+                    weekdayChoice = .template(first)
                 }
             }
         }
@@ -118,6 +126,41 @@ struct BulkApplySheet: View {
             }
             Text("休み").tag(DayChoice.off)
             Text("基本テンプレートに戻す").tag(DayChoice.base)
+        }
+    }
+
+    private var weekdayToggles: some View {
+        let calendar = calendar
+        let symbols = calendar.veryShortWeekdaySymbols
+        let order = (0..<7).map { (calendar.firstWeekday - 1 + $0) % 7 + 1 }
+        return HStack {
+            ForEach(order, id: \.self) { weekday in
+                let isOn = weekdays.contains(weekday)
+                Button {
+                    if isOn {
+                        weekdays.remove(weekday)
+                    } else {
+                        weekdays.insert(weekday)
+                    }
+                } label: {
+                    Text(symbols[weekday - 1])
+                        .font(.subheadline.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(isOn ? Color.white : weekdayColor(weekday))
+                        .background(isOn ? Color.accentColor : Color.secondary.opacity(0.12), in: .circle)
+                }
+                .buttonStyle(.borderless)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func weekdayColor(_ weekday: Int) -> Color {
+        switch weekday {
+        case 1: .red
+        case 7: .blue
+        default: .primary
         }
     }
 
@@ -142,8 +185,22 @@ struct BulkApplySheet: View {
         return rangeDays.filter { $0 >= today }
     }
 
-    private var choices: [DayChoice] {
-        mode == .single ? [single] : pattern
+    /// 実際に書き込む日と内容。今日より前の日は含めない。
+    private var assignments: [(day: Date, choice: DayChoice)] {
+        let today = calendar.startOfDay(for: .now)
+        let all: [(day: Date, choice: DayChoice)]
+        switch mode {
+        case .single:
+            all = rangeDays.map { (day: $0, choice: single) }
+        case .pattern:
+            guard !pattern.isEmpty else { return [] }
+            all = rangeDays.enumerated().map { (day: $0.element, choice: pattern[$0.offset % pattern.count]) }
+        case .weekday:
+            all = rangeDays
+                .filter { weekdays.contains(calendar.component(.weekday, from: $0)) }
+                .map { (day: $0, choice: weekdayChoice) }
+        }
+        return all.filter { $0.day >= today }
     }
 
     private var rangeText: String {
@@ -164,16 +221,12 @@ struct BulkApplySheet: View {
             "範囲内のすべての日に設定します。すでにある予約は上書きされます。"
         case .pattern:
             "範囲の初日から順に、パターンを繰り返して設定します（例: 日勤・日勤・夜勤・夜勤・休み・休み）。すでにある予約は上書きされます。"
+        case .weekday:
+            "選んだ曜日に設定します。選んでいない曜日は変更しません。すでにある予約は上書きされます。"
         }
     }
 
     private func apply() {
-        let choices = choices
-        guard !choices.isEmpty else { return }
-        let today = calendar.startOfDay(for: .now)
-        let assignments = rangeDays.enumerated()
-            .filter { $0.element >= today }
-            .map { (day: $0.element, choice: choices[$0.offset % choices.count]) }
         ReservationEditor.apply(assignments, reservations: reservations, context: context)
     }
 }

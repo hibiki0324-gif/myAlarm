@@ -37,6 +37,19 @@ final class AlarmTemplate {
         let times = sortedAlarms.filter(\.isEnabled).map(\.timeText)
         return times.isEmpty ? "アラームなし" : times.joined(separator: "  ")
     }
+
+    /// 同じ時刻のアラームがなければ追加する。
+    func addAlarm(hour: Int, minute: Int, label: String = "", isEnabled: Bool = true) {
+        guard !alarms.contains(where: { $0.hour == hour && $0.minute == minute }) else { return }
+        alarms.append(TemplateAlarm(hour: hour, minute: minute, label: label, isEnabled: isEnabled))
+    }
+
+    /// 他のテンプレートのアラームを取り込む。同じ時刻のアラームは取り込まない。
+    func importAlarms(from source: AlarmTemplate) {
+        for alarm in source.sortedAlarms {
+            addAlarm(hour: alarm.hour, minute: alarm.minute, label: alarm.label, isEnabled: alarm.isEnabled)
+        }
+    }
 }
 
 @Model

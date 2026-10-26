@@ -46,24 +46,41 @@ struct TemplateListView: View {
                 TemplateEditView(template: template)
             }
             .toolbar {
-                Button("追加", systemImage: "plus") {
-                    let used = Set(templates.map(\.color))
-                    let template = AlarmTemplate(
-                        name: "新しいテンプレート",
-                        color: TemplateColor.allCases.first { !used.contains($0) } ?? .blue
-                    )
-                    context.insert(template)
-                    path.append(template)
+                Menu("追加", systemImage: "plus") {
+                    Button("新規作成", systemImage: "plus") { create(copying: nil) }
+                    if !templates.isEmpty {
+                        Section("コピーして作成") {
+                            ForEach(templates) { template in
+                                Button(template.name) { create(copying: template) }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+
+    /// source を渡すと、そのアラームを引き継いだテンプレートを作る。色はまだ使っていない色にする。
+    private func create(copying source: AlarmTemplate?) {
+        let used = Set(templates.map(\.color))
+        let template = AlarmTemplate(
+            name: source.map { "\($0.name)のコピー" } ?? "新しいテンプレート",
+            color: TemplateColor.allCases.first { !used.contains($0) } ?? .blue
+        )
+        context.insert(template)
+        if let source {
+            template.importAlarms(from: source)
+        }
+        path.append(template)
     }
 }
 
 struct TemplateEditView: View {
     @Environment(\.modelContext) private var context
     @Bindable var template: AlarmTemplate
+    @Query(sort: \AlarmTemplate.createdAt) private var templates: [AlarmTemplate]
     @State private var editing: AlarmEditTarget<TemplateAlarm>?
+    @State private var isBulkInputPresented = false
 
     var body: some View {
         Form {
@@ -104,6 +121,24 @@ struct TemplateEditView: View {
                 Button("アラームを追加", systemImage: "plus.circle.fill") {
                     editing = .new
                 }
+                Button("時間帯でまとめて追加", systemImage: "list.bullet.indent") {
+                    isBulkInputPresented = true
+                }
+                let others = templates.filter { $0 != template }
+                if !others.isEmpty {
+                    Menu {
+                        ForEach(others) { other in
+                            Button {
+                                template.importAlarms(from: other)
+                            } label: {
+                                Text(other.name)
+                                Text(other.enabledAlarmTimes)
+                            }
+                        }
+                    } label: {
+                        Label("他のテンプレートから取り込む", systemImage: "square.and.arrow.down")
+                    }
+                }
             }
         }
         .navigationTitle(template.name.isEmpty ? "テンプレート" : template.name)
@@ -119,6 +154,13 @@ struct TemplateEditView: View {
                     alarm.hour = hour
                     alarm.minute = minute
                     alarm.label = label
+                }
+            }
+        }
+        .sheet(isPresented: $isBulkInputPresented) {
+            BulkAlarmInputSheet { times, label in
+                for time in times {
+                    template.addAlarm(hour: time.hour, minute: time.minute, label: label)
                 }
             }
         }

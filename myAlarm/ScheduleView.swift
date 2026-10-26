@@ -102,6 +102,21 @@ struct ScheduleView: View {
     }
 
     private var baseTemplateSwitcher: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let base = templates.first(where: \.isActive) {
+                Text("『\(base.name)』を選択中")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(base.color.color)
+            } else {
+                Text("選択なし")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            baseTemplateButtons
+        }
+    }
+
+    private var baseTemplateButtons: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(templates) { template in
