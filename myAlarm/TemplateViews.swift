@@ -63,7 +63,7 @@ struct TemplateListView: View {
 struct TemplateEditView: View {
     @Environment(\.modelContext) private var context
     @Bindable var template: AlarmTemplate
-    @State private var editing: AlarmEditTarget?
+    @State private var editing: AlarmEditTarget<TemplateAlarm>?
 
     var body: some View {
         Form {
@@ -109,7 +109,18 @@ struct TemplateEditView: View {
         .navigationTitle(template.name.isEmpty ? "テンプレート" : template.name)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editing) { target in
-            AlarmEditSheet(template: template, target: target)
+            switch target {
+            case .new:
+                AlarmEditSheet(isNew: true) { hour, minute, label in
+                    template.alarms.append(TemplateAlarm(hour: hour, minute: minute, label: label))
+                }
+            case .existing(let alarm):
+                AlarmEditSheet(isNew: false, hour: alarm.hour, minute: alarm.minute, label: alarm.label) { hour, minute, label in
+                    alarm.hour = hour
+                    alarm.minute = minute
+                    alarm.label = label
+                }
+            }
         }
     }
 }
@@ -133,9 +144,9 @@ private struct AlarmRow: View {
     }
 }
 
-enum AlarmEditTarget: Identifiable {
+enum AlarmEditTarget<Alarm: PersistentModel>: Identifiable {
     case new
-    case existing(TemplateAlarm)
+    case existing(Alarm)
 
     var id: String {
         switch self {
@@ -145,29 +156,23 @@ enum AlarmEditTarget: Identifiable {
     }
 }
 
-private struct AlarmEditSheet: View {
+/// アラームの時刻とラベルを編集するシート。テンプレートのアラームと単発アラームで共用する。
+struct AlarmEditSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let template: AlarmTemplate
-    let target: AlarmEditTarget
+    let isNew: Bool
+    let onSave: (_ hour: Int, _ minute: Int, _ label: String) -> Void
 
     @State private var time: Date
     @State private var label: String
 
-    init(template: AlarmTemplate, target: AlarmEditTarget) {
-        self.template = template
-        self.target = target
+    init(isNew: Bool, hour: Int = 7, minute: Int = 0, label: String = "", onSave: @escaping (_ hour: Int, _ minute: Int, _ label: String) -> Void) {
+        self.isNew = isNew
+        self.onSave = onSave
         var components = DateComponents()
-        switch target {
-        case .new:
-            components.hour = 7
-            components.minute = 0
-            _label = State(initialValue: "")
-        case .existing(let alarm):
-            components.hour = alarm.hour
-            components.minute = alarm.minute
-            _label = State(initialValue: alarm.label)
-        }
+        components.hour = hour
+        components.minute = minute
         _time = State(initialValue: Calendar.current.date(from: components) ?? .now)
+        _label = State(initialValue: label)
     }
 
     var body: some View {
@@ -187,31 +192,13 @@ private struct AlarmEditSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存", systemImage: "checkmark") {
-                        save()
+                        let components = Calendar.current.dateComponents([.hour, .minute], from: time)
+                        onSave(components.hour ?? 0, components.minute ?? 0, label)
                         dismiss()
                     }
                 }
             }
         }
         .presentationDetents([.medium])
-    }
-
-    private var isNew: Bool {
-        if case .new = target { return true }
-        return false
-    }
-
-    private func save() {
-        let components = Calendar.current.dateComponents([.hour, .minute], from: time)
-        let hour = components.hour ?? 0
-        let minute = components.minute ?? 0
-        switch target {
-        case .new:
-            template.alarms.append(TemplateAlarm(hour: hour, minute: minute, label: label))
-        case .existing(let alarm):
-            alarm.hour = hour
-            alarm.minute = minute
-            alarm.label = label
-        }
     }
 }

@@ -1,6 +1,7 @@
 import Foundation
 
 /// 1 日分の予定。予約 > 基本テンプレート の優先順で、その日に使うテンプレートを決める。
+/// 単発アラームはテンプレートのアラームに加えて鳴る。
 struct DayPlan: Identifiable {
     enum Source {
         /// 予約でテンプレートが指定されている
@@ -16,6 +17,8 @@ struct DayPlan: Identifiable {
     let day: Date
     let source: Source
     let template: AlarmTemplate?
+    let oneOffs: [OneOffAlarm]
+    /// テンプレートと単発のアラームを時刻順に並べたもの
     let alarms: [PlannedAlarm]
 
     var id: Date { day }
@@ -36,6 +39,7 @@ enum AlarmPlanner {
         from now: Date = .now,
         templates: [AlarmTemplate],
         reservations: [ShiftReservation],
+        oneOffs: [OneOffAlarm],
         calendar: Calendar = .current
     ) -> [DayPlan] {
         let today = calendar.startOfDay(for: now)
@@ -44,6 +48,7 @@ enum AlarmPlanner {
             reservations.map { (calendar.startOfDay(for: $0.day), $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        let oneOffsByDay = Dictionary(grouping: oneOffs) { calendar.startOfDay(for: $0.day) }
 
         return (0..<days).compactMap { offset in
             guard let day = calendar.date(byAdding: .day, value: offset, to: today) else { return nil }
@@ -61,14 +66,20 @@ enum AlarmPlanner {
                 source = .none
             }
 
-            let alarms = (template?.sortedAlarms ?? []).filter(\.isEnabled).compactMap { alarm -> PlannedAlarm? in
+            let templateAlarms = (template?.sortedAlarms ?? []).filter(\.isEnabled).compactMap { alarm -> PlannedAlarm? in
                 guard let template,
                       let date = calendar.date(bySettingHour: alarm.hour, minute: alarm.minute, second: 0, of: day)
                 else { return nil }
                 let title = alarm.label.isEmpty ? template.name : "\(template.name)・\(alarm.label)"
                 return PlannedAlarm(date: date, title: title, color: template.color)
             }
-            return DayPlan(day: day, source: source, template: template, alarms: alarms)
+            let dayOneOffs = (oneOffsByDay[day] ?? []).sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
+            let oneOffAlarms = dayOneOffs.compactMap { oneOff -> PlannedAlarm? in
+                guard let date = calendar.date(bySettingHour: oneOff.hour, minute: oneOff.minute, second: 0, of: day) else { return nil }
+                return PlannedAlarm(date: date, title: oneOff.title, color: OneOffAlarm.color)
+            }
+            let alarms = (templateAlarms + oneOffAlarms).sorted { $0.date < $1.date }
+            return DayPlan(day: day, source: source, template: template, oneOffs: dayOneOffs, alarms: alarms)
         }
     }
 }
