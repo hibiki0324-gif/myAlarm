@@ -185,6 +185,17 @@ enum TemplateColor: String, CaseIterable, Identifiable {
     }
 }
 
+enum WeekdayStyle {
+    /// Calendar の weekday（1 = 日曜 … 7 = 土曜）に対応する文字色。
+    static func color(for weekday: Int) -> Color {
+        switch weekday {
+        case 1: .red
+        case 7: .blue
+        default: .primary
+        }
+    }
+}
+
 enum SampleData {
     /// 初回起動時に日勤・夜勤のサンプルを用意する（どちらも基本テンプレートにはしない）。
     static func seedIfNeeded(_ context: ModelContext) {

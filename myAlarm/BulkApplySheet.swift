@@ -19,6 +19,12 @@ struct BulkApplySheet: View {
         var id: Self { self }
     }
 
+    /// パターンの 1 日分。行の追加・削除で取り違えないよう、ID を持たせる。
+    private struct PatternStep: Identifiable {
+        let id = UUID()
+        var choice: DayChoice
+    }
+
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \AlarmTemplate.createdAt) private var templates: [AlarmTemplate]
@@ -29,7 +35,7 @@ struct BulkApplySheet: View {
     @State private var endDate: Date
     @State private var mode: Mode = .single
     @State private var single: DayChoice = .off
-    @State private var pattern: [DayChoice] = []
+    @State private var pattern: [PatternStep] = []
     /// Calendar の weekday（1 = 日曜 … 7 = 土曜）。初期値は月〜金。
     @State private var weekdays: Set<Int> = [2, 3, 4, 5, 6]
     @State private var weekdayChoice: DayChoice = .off
@@ -79,12 +85,13 @@ struct BulkApplySheet: View {
                     case .single:
                         choicePicker("設定する内容", selection: $single)
                     case .pattern:
-                        ForEach(pattern.indices, id: \.self) { index in
-                            choicePicker("\(index + 1)日目", selection: $pattern[index])
+                        ForEach($pattern) { $step in
+                            let index = pattern.firstIndex { $0.id == step.id } ?? 0
+                            choicePicker("\(index + 1)日目", selection: $step.choice)
                         }
                         .onDelete { pattern.remove(atOffsets: $0) }
                         Button("日を追加", systemImage: "plus.circle.fill") {
-                            pattern.append(pattern.last ?? .off)
+                            pattern.append(PatternStep(choice: pattern.last?.choice ?? .off))
                         }
                     case .weekday:
                         weekdayToggles
@@ -112,7 +119,7 @@ struct BulkApplySheet: View {
             }
             .onAppear {
                 if pattern.isEmpty, let first = templates.first {
-                    pattern = [.template(first), .template(first), .off]
+                    pattern = [.template(first), .template(first), .off].map { PatternStep(choice: $0) }
                     weekdayChoice = .template(first)
                 }
             }
@@ -146,7 +153,7 @@ struct BulkApplySheet: View {
                     Text(symbols[weekday - 1])
                         .font(.subheadline.weight(.semibold))
                         .frame(width: 36, height: 36)
-                        .foregroundStyle(isOn ? Color.white : weekdayColor(weekday))
+                        .foregroundStyle(isOn ? Color.white : WeekdayStyle.color(for: weekday))
                         .background(isOn ? Color.accentColor : Color.secondary.opacity(0.12), in: .circle)
                 }
                 .buttonStyle(.borderless)
@@ -154,14 +161,6 @@ struct BulkApplySheet: View {
             }
         }
         .padding(.vertical, 4)
-    }
-
-    private func weekdayColor(_ weekday: Int) -> Color {
-        switch weekday {
-        case 1: .red
-        case 7: .blue
-        default: .primary
-        }
     }
 
     /// 範囲内のすべての日（今日より前も含む）。パターンは範囲の初日から数える。
@@ -194,7 +193,7 @@ struct BulkApplySheet: View {
             all = rangeDays.map { (day: $0, choice: single) }
         case .pattern:
             guard !pattern.isEmpty else { return [] }
-            all = rangeDays.enumerated().map { (day: $0.element, choice: pattern[$0.offset % pattern.count]) }
+            all = rangeDays.enumerated().map { (day: $0.element, choice: pattern[$0.offset % pattern.count].choice) }
         case .weekday:
             all = rangeDays
                 .filter { weekdays.contains(calendar.component(.weekday, from: $0)) }

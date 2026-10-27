@@ -12,6 +12,8 @@ struct ScheduleView: View {
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     @State private var selectedDay: SelectedDay?
     @State private var isBulkApplyPresented = false
+    /// 時間がたっても「次のアラーム」や今日の表示が古くならないよう、定期的に更新する
+    @State private var now = Date.now
 
     var body: some View {
         NavigationStack {
@@ -39,9 +41,10 @@ struct ScheduleView: View {
                 }
 
                 Section {
-                    MonthCalendarView(month: $month, plans: monthPlans) { day in
+                    MonthCalendarView(month: $month, plans: monthPlans, now: now) { day in
                         selectedDay = SelectedDay(day: day)
                     }
+                    CalendarLegend()
                 } header: {
                     Text("予定")
                 } footer: {
@@ -60,6 +63,12 @@ struct ScheduleView: View {
             .sheet(isPresented: $isBulkApplyPresented) {
                 BulkApplySheet(initialDate: initialBulkDate)
             }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(30))
+                    now = .now
+                }
+            }
         }
     }
 
@@ -70,19 +79,21 @@ struct ScheduleView: View {
 
     /// 表示中の月が今月なら今日、それ以外ならその月の 1 日。
     private var initialBulkDate: Date {
-        Calendar.current.isDate(month, equalTo: .now, toGranularity: .month) ? .now : month
+        Calendar.current.isDate(month, equalTo: now, toGranularity: .month) ? now : month
     }
 
     @ViewBuilder
     private var nextAlarmView: some View {
         let plans = AlarmPlanner.plans(
             days: AlarmPlanner.horizonDays,
+            from: now,
             templates: templates,
             reservations: reservations,
             oneOffs: oneOffs
         )
         let alarms = plans.flatMap(\.alarms)
-        let notBefore = max(Date.now, scheduler.activeSuppression ?? .now)
+        let suppressedUntil = scheduler.activeSuppression(at: now)
+        let notBefore = max(now, suppressedUntil ?? now)
         if let next = alarms.first(where: { $0.date > notBefore }) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("次のアラーム")
@@ -102,7 +113,7 @@ struct ScheduleView: View {
                 .foregroundStyle(.secondary)
         }
 
-        if let until = scheduler.activeSuppression {
+        if let until = suppressedUntil {
             HStack {
                 Label("\(until.formatted(.dateTime.hour().minute()))までのアラームを止めています", systemImage: "sun.max.fill")
                     .font(.subheadline)
@@ -112,7 +123,7 @@ struct ScheduleView: View {
                 }
                 .buttonStyle(.borderless)
             }
-        } else if let next = alarms.first(where: { $0.date > .now }) {
+        } else if let next = alarms.first(where: { $0.date > now }) {
             let end = AlarmPlanner.seriesEnd(from: next.date, in: alarms)
             let count = alarms.filter { $0.date >= next.date && $0.date <= end }.count
             Button {
@@ -199,6 +210,7 @@ private struct SelectedDay: Identifiable {
 private struct MonthCalendarView: View {
     @Binding var month: Date
     let plans: [DayPlan]
+    let now: Date
     let onSelect: (Date) -> Void
 
     private let calendar = Calendar.current
@@ -218,9 +230,9 @@ private struct MonthCalendarView: View {
             }
             .buttonStyle(.borderless)
             .overlay(alignment: .trailing) {
-                if !calendar.isDate(month, equalTo: .now, toGranularity: .month) {
+                if !calendar.isDate(month, equalTo: now, toGranularity: .month) {
                     Button("今日") {
-                        month = calendar.dateInterval(of: .month, for: .now)?.start ?? .now
+                        month = calendar.dateInterval(of: .month, for: now)?.start ?? now
                     }
                     .font(.subheadline)
                     .buttonStyle(.borderless)
@@ -241,7 +253,7 @@ private struct MonthCalendarView: View {
                     Button {
                         onSelect(plan.day)
                     } label: {
-                        DayCell(plan: plan)
+                        DayCell(plan: plan, now: now)
                     }
                     .buttonStyle(.borderless)
                     .tint(.primary)
@@ -271,6 +283,7 @@ private struct MonthCalendarView: View {
 
 private struct DayCell: View {
     let plan: DayPlan
+    let now: Date
 
     private var calendar: Calendar { .current }
 
@@ -324,15 +337,40 @@ private struct DayCell: View {
         }
     }
 
-    private var isToday: Bool { calendar.isDateInToday(plan.day) }
+    private var isToday: Bool { calendar.isDate(plan.day, inSameDayAs: now) }
 
-    private var isPast: Bool { plan.day < calendar.startOfDay(for: .now) }
+    private var isPast: Bool { plan.day < calendar.startOfDay(for: now) }
 
     private var weekdayColor: Color {
-        switch calendar.component(.weekday, from: plan.day) {
-        case 1: .red
-        case 7: .blue
-        default: .primary
+        WeekdayStyle.color(for: calendar.component(.weekday, from: plan.day))
+    }
+}
+
+/// カレンダーの見方。DayCell の表示と合わせる。
+private struct CalendarLegend: View {
+    var body: some View {
+        HStack(spacing: 14) {
+            item("予約した日") {
+                RoundedRectangle(cornerRadius: 3).fill(Color.accentColor)
+            }
+            item("基本テンプレート") {
+                RoundedRectangle(cornerRadius: 3).fill(Color.accentColor.opacity(0.18))
+            }
+            item("この日だけ") {
+                Image(systemName: "bell.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(OneOffAlarm.color.color)
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func item(_ title: String, @ViewBuilder mark: () -> some View) -> some View {
+        HStack(spacing: 4) {
+            mark().frame(width: 14, height: 10)
+            Text(title)
         }
     }
 }

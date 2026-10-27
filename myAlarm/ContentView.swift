@@ -4,7 +4,8 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AlarmScheduler.self) private var scheduler
     @Query private var templates: [AlarmTemplate]
-    @Query private var alarms: [TemplateAlarm]
+    /// テンプレートのアラームの追加・削除も検知するため
+    @Query private var templateAlarms: [TemplateAlarm]
     @Query private var reservations: [ShiftReservation]
     @Query private var oneOffs: [OneOffAlarm]
 
@@ -17,40 +18,19 @@ struct ContentView: View {
                 TemplateListView()
             }
         }
-        .onChange(of: dataSignature) {
+        .onChange(of: plannedAlarms) {
             scheduler.requestSync()
         }
     }
 
-    /// アラームに影響するデータが変わったら同期するための指紋。
-    private var dataSignature: Int {
-        var hasher = Hasher()
-        for template in templates.sorted(by: { $0.createdAt < $1.createdAt }) {
-            hasher.combine(template.persistentModelID)
-            hasher.combine(template.name)
-            hasher.combine(template.colorName)
-            hasher.combine(template.isActive)
-            hasher.combine(template.wakeUpButtonText)
-        }
-        for alarm in alarms.sorted(by: { $0.persistentModelID.hashValue < $1.persistentModelID.hashValue }) {
-            hasher.combine(alarm.persistentModelID)
-            hasher.combine(alarm.hour)
-            hasher.combine(alarm.minute)
-            hasher.combine(alarm.label)
-            hasher.combine(alarm.isEnabled)
-            hasher.combine(alarm.template?.persistentModelID)
-        }
-        for reservation in reservations.sorted(by: { $0.day < $1.day }) {
-            hasher.combine(reservation.day)
-            hasher.combine(reservation.template?.persistentModelID)
-        }
-        for oneOff in oneOffs.sorted(by: { $0.persistentModelID.hashValue < $1.persistentModelID.hashValue }) {
-            hasher.combine(oneOff.persistentModelID)
-            hasher.combine(oneOff.day)
-            hasher.combine(oneOff.hour)
-            hasher.combine(oneOff.minute)
-            hasher.combine(oneOff.label)
-        }
-        return hasher.finalize()
+    /// 登録すべきアラームの一覧。これが変わったときだけ同期する。
+    /// アラームに影響する値は PlannedAlarm に含まれるので、モデルに項目を足してもここを直す必要はない。
+    private var plannedAlarms: [PlannedAlarm] {
+        AlarmPlanner.plans(
+            days: AlarmPlanner.horizonDays,
+            templates: templates,
+            reservations: reservations,
+            oneOffs: oneOffs
+        ).flatMap(\.alarms)
     }
 }

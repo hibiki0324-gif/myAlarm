@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// 1 日分の予定。予約 > 基本テンプレート の優先順で、その日に使うテンプレートを決める。
@@ -24,12 +25,26 @@ struct DayPlan: Identifiable {
     var id: Date { day }
 }
 
+/// AlarmKit に登録する 1 件分の内容。アラームの鳴り方に関わる値はすべてここに含める。
+/// ここに含めておけば、変更の検知（ContentView）と登録 ID（alarmID）に自動で反映される。
 struct PlannedAlarm: Hashable {
     let date: Date
     let title: String
     let color: TemplateColor
     /// 「起きた」ボタンの表示名
     let wakeUpButtonTitle: String
+
+    /// 内容から決まる ID。内容が同じなら同期のたびに同じ ID になるので、変わった分だけ登録し直せる。
+    var alarmID: UUID {
+        let key = "\(date.timeIntervalSince1970)|\(title)|\(color.rawValue)|\(wakeUpButtonTitle)"
+        var bytes = Array(SHA256.hash(data: Data(key.utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50 // バージョン 5 相当
+        bytes[8] = (bytes[8] & 0x3F) | 0x80 // RFC 4122 バリアント
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+    }
 }
 
 enum AlarmPlanner {
