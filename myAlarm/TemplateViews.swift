@@ -278,7 +278,8 @@ struct SelectableRow<Content: View>: View {
     }
 }
 
-/// 選択モードのとき下部に「すべて選択」と「削除」を出す。削除の前に確認する。
+/// 選択モードのとき、リストの下に「すべて選択」と「削除」のバーを出す。削除の前に確認する。
+/// ツールバーの bottomBar はタブバーと重なるため使わない。
 private struct SelectionDeleteBar: ViewModifier {
     let isSelecting: Bool
     @Binding var selection: Set<PersistentIdentifier>
@@ -289,21 +290,24 @@ private struct SelectionDeleteBar: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .toolbar {
+            .safeAreaInset(edge: .bottom) {
                 if isSelecting {
-                    ToolbarItem(placement: .bottomBar) {
-                        let isAllSelected = !allIDs.isEmpty && selection.count == allIDs.count
+                    let isAllSelected = !allIDs.isEmpty && selection.count == allIDs.count
+                    HStack {
                         Button(isAllSelected ? "選択解除" : "すべて選択") {
                             selection = isAllSelected ? [] : Set(allIDs)
                         }
-                    }
-                    ToolbarSpacer(.flexible, placement: .bottomBar)
-                    ToolbarItem(placement: .bottomBar) {
-                        Button(selection.isEmpty ? "削除" : "\(selection.count)件を削除", role: .destructive) {
+                        Spacer()
+                        Button(selection.isEmpty ? "削除" : "\(selection.count)件を削除", systemImage: "trash", role: .destructive) {
                             isConfirming = true
                         }
                         .disabled(selection.isEmpty)
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .glassEffect()
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
                 }
             }
             .confirmationDialog("\(selection.count)件のアラームを削除しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
