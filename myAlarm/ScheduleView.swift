@@ -346,31 +346,17 @@ private struct DayCell: View {
     }
 }
 
-/// カレンダーの見方。DayCell の表示と合わせる。
+/// カレンダーのベルの印の意味。
 private struct CalendarLegend: View {
     var body: some View {
-        HStack(spacing: 14) {
-            item("予約した日") {
-                RoundedRectangle(cornerRadius: 3).fill(Color.accentColor)
-            }
-            item("基本テンプレート") {
-                RoundedRectangle(cornerRadius: 3).fill(Color.accentColor.opacity(0.18))
-            }
-            item("この日だけ") {
-                Image(systemName: "bell.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(OneOffAlarm.color.color)
-            }
+        HStack(spacing: 4) {
+            Image(systemName: "bell.fill")
+                .font(.system(size: 8))
+                .foregroundStyle(OneOffAlarm.color.color)
+            Text("この日だけのアラームあり")
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity)
-    }
-
-    private func item(_ title: String, @ViewBuilder mark: () -> some View) -> some View {
-        HStack(spacing: 4) {
-            mark().frame(width: 14, height: 10)
-            Text(title)
-        }
     }
 }
