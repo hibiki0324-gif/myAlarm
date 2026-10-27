@@ -28,6 +28,7 @@ xcodebuild -project myAlarm.xcodeproj -scheme myAlarm \
   - **アラームの鳴り方に関わる値は `PlannedAlarm` に含めること。** 含めれば変更の検知と登録 ID に自動で反映される。含めないと変更が AlarmKit に反映されない。
 - SwiftData のコンテナは `AppData.container`（MyAlarmApp.swift）で共有する。アラームの「起きた」ボタン（`WakeUpIntent`）からアプリが裏で起動されたときもこれを使う。
 - 「起きた」で止めた範囲は `AlarmScheduler.suppressedUntil`（UserDefaults に保存）で持つ。この時刻までのアラームは同期時に登録しない。止める範囲は `AlarmPlanner.seriesEnd`（間隔 `seriesGap` 以内で連なるアラーム）で決める。
+- 古いデータの自動削除: `DataCleanup.removeExpired` が、先月 1 日より前の `ShiftReservation` と `OneOffAlarm` を消す。アプリがアクティブになったときとバックグラウンド更新で実行する。日付を持つモデルを増やしたら、ここにも追加するか検討する。
 - 優先順位: 予約（`ShiftReservation`）> 基本テンプレート（`isActive` の `AlarmTemplate`）。予約の `template == nil` は「休み」。
 - `Info.plist` に `NSAlarmKitUsageDescription` とバックグラウンド更新の ID がある。ID を変えるときは `AlarmScheduler.refreshTaskID` と両方を直す。
 

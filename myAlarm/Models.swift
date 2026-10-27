@@ -196,6 +196,31 @@ enum WeekdayStyle {
     }
 }
 
+/// 古くなった日付つきのデータ（日付ごとの指定と、この日だけのアラーム）を消す。
+/// テンプレートとそのアラームは日付を持たないので対象外。
+enum DataCleanup {
+    /// この日より前のデータを消す。今月と先月の分は振り返れるように残す。
+    static func cutoff(now: Date = .now, calendar: Calendar = .current) -> Date? {
+        guard let thisMonth = calendar.dateInterval(of: .month, for: now)?.start else { return nil }
+        return calendar.date(byAdding: .month, value: -1, to: thisMonth)
+    }
+
+    static func removeExpired(now: Date = .now) {
+        removeExpired(AppData.container.mainContext, now: now)
+    }
+
+    static func removeExpired(_ context: ModelContext, now: Date = .now) {
+        guard let cutoff = cutoff(now: now) else { return }
+        // テンプレートとの関連を正しく外すため、一括削除ではなく 1 件ずつ消す
+        let reservations = (try? context.fetch(FetchDescriptor<ShiftReservation>(predicate: #Predicate { $0.day < cutoff }))) ?? []
+        let oneOffs = (try? context.fetch(FetchDescriptor<OneOffAlarm>(predicate: #Predicate { $0.day < cutoff }))) ?? []
+        guard !reservations.isEmpty || !oneOffs.isEmpty else { return }
+        reservations.forEach(context.delete)
+        oneOffs.forEach(context.delete)
+        try? context.save()
+    }
+}
+
 enum SampleData {
     /// 初回起動時に日勤・夜勤のサンプルを用意する（どちらも基本テンプレートにはしない）。
     static func seedIfNeeded(_ context: ModelContext) {
