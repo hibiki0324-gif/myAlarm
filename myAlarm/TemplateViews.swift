@@ -7,6 +7,7 @@ struct TemplateListView: View {
     @State private var path: [AlarmTemplate] = []
     /// 作成中（まだ保存していない）のテンプレート
     @State private var draftID: PersistentIdentifier?
+    @State private var pendingDelete: AlarmTemplate?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -35,8 +36,18 @@ struct TemplateListView: View {
                     }
                 }
                 .onDelete { offsets in
-                    for index in offsets { context.delete(templates[index]) }
+                    pendingDelete = offsets.first.map { templates[$0] }
                 }
+            }
+            .confirmationDialog(
+                "「\(pendingDelete?.name ?? "")」を削除しますか？",
+                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                titleVisibility: .visible,
+                presenting: pendingDelete
+            ) { template in
+                Button("削除", role: .destructive) { context.delete(template) }
+            } message: { template in
+                Text(deleteMessage(for: template))
             }
             .overlay {
                 if templates.isEmpty {
@@ -63,6 +74,21 @@ struct TemplateListView: View {
                 }
             }
         }
+    }
+
+    /// 削除するとどうなるかの説明。予約と基本テンプレートへの影響を伝える。
+    private func deleteMessage(for template: AlarmTemplate) -> String {
+        var lines: [String] = []
+        let today = Calendar.current.startOfDay(for: .now)
+        let reservedDays = template.reservations.filter { $0.day >= today }.count
+        if reservedDays > 0 {
+            lines.append("このテンプレートを予約している今日以降の\(reservedDays)日は、予約が解除されて基本テンプレートに従います。")
+        }
+        if template.isActive {
+            lines.append("基本テンプレートは「なし」になります。")
+        }
+        lines.append("この操作は取り消せません。")
+        return lines.joined(separator: "\n")
     }
 
     /// source を渡すと、そのアラームを引き継いだテンプレートを作る。色はまだ使っていない色にする。
@@ -111,16 +137,6 @@ struct TemplateEditView: View {
                     .submitLabel(.done)
             }
 
-            Section {
-                TextField(AlarmTemplate.defaultWakeUpButtonText, text: $template.wakeUpButtonText)
-                    .focused($focusedField, equals: .wakeUpButton)
-                    .submitLabel(.done)
-            } header: {
-                Text("一括停止ボタンの表示名")
-            } footer: {
-                Text("アラームが鳴ったときに表示される、続けて鳴る予定のアラームをまとめて止めるボタンの文字です。空欄なら「起きた」になります。長いと途中で切れることがあるので、短めがおすすめです。")
-            }
-
             Section("色") {
                 HStack {
                     ForEach(TemplateColor.allCases) { color in
@@ -165,6 +181,16 @@ struct TemplateEditView: View {
                 if !isSelecting {
                     alarmActions
                 }
+            }
+
+            Section {
+                TextField(AlarmTemplate.defaultWakeUpButtonText, text: $template.wakeUpButtonText)
+                    .focused($focusedField, equals: .wakeUpButton)
+                    .submitLabel(.done)
+            } header: {
+                Text("一括停止ボタンの表示名")
+            } footer: {
+                Text("アラームが鳴ったときに表示される、続けて鳴る予定のアラームをまとめて止めるボタンの文字です。空欄なら「起きた」になります。長いと途中で切れることがあるので、短めがおすすめです。")
             }
         }
         .scrollDismissesKeyboard(.immediately)

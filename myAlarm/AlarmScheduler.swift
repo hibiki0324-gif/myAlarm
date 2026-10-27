@@ -18,7 +18,7 @@ nonisolated struct WakeUpIntent: LiveActivityIntent {
 }
 
 /// SwiftData の内容から今後のアラームを計算し、AlarmKit の登録内容と同期する。
-/// 同期のたびに既存のアラームをすべて取り消して登録し直す。
+/// 内容から決まる ID（PlannedAlarm.alarmID）で突き合わせ、不要になった分の取り消しと新しい分の登録だけを行う。
 /// 「起きた」で止めた時刻（suppressedUntil）までのアラームは登録しない。
 @Observable
 final class AlarmScheduler {
@@ -38,9 +38,9 @@ final class AlarmScheduler {
     private var isSyncing = false
     private var needsSync = false
 
-    /// 今止めている範囲。過ぎていれば nil。
-    var activeSuppression: Date? {
-        guard let suppressedUntil, suppressedUntil > .now else { return nil }
+    /// now の時点で止めている範囲。過ぎていれば nil。
+    func activeSuppression(at now: Date = .now) -> Date? {
+        guard let suppressedUntil, suppressedUntil > now else { return nil }
         return suppressedUntil
     }
 
@@ -116,17 +116,23 @@ final class AlarmScheduler {
 
         let now = Date.now
         let plans = upcomingPlans(from: now)
-        let notBefore = max(now, activeSuppression ?? now)
-        let upcoming = plans.flatMap(\.alarms).filter { $0.date > notBefore }
+        let notBefore = max(now, activeSuppression(at: now) ?? now)
+        let desired = Dictionary(
+            plans.flatMap(\.alarms).filter { $0.date > notBefore }.map { ($0.alarmID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         do {
-            for alarm in try manager.alarms {
+            let existing = try manager.alarms
+            // 鳴っている最中のアラームは、ユーザーが止めるまでそのままにする
+            for alarm in existing where desired[alarm.id] == nil && alarm.state != .alerting {
                 try manager.cancel(id: alarm.id)
             }
-            for planned in upcoming {
-                _ = try await manager.schedule(id: UUID(), configuration: configuration(for: planned))
+            let existingIDs = Set(existing.map(\.id))
+            for (id, planned) in desired where !existingIDs.contains(id) {
+                _ = try await manager.schedule(id: id, configuration: configuration(for: planned))
             }
-            scheduledCount = upcoming.count
+            scheduledCount = desired.count
             scheduledUntil = plans.last?.day
             lastError = nil
         } catch {

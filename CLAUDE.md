@@ -22,9 +22,10 @@ xcodebuild -project myAlarm.xcodeproj -scheme myAlarm \
 - SwiftUI + SwiftData + AlarmKit。外部依存なし。デプロイメントターゲットは iOS 26.0。
 - ビルド設定で `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` が有効。MainActor 外で使う型には `nonisolated` が必要（例: `ShiftAlarmMetadata`）。
 - データの流れ: SwiftData のモデル → `AlarmPlanner.plans(...)`（純粋関数）→ `AlarmScheduler` が AlarmKit に登録。
-- **14 日先まで登録する方式**: iOS ではアプリが指定日に自分で切り替えられないため、`AlarmPlanner.horizonDays`（14 日）先までの日付指定アラームをまとめて登録しておく。同期のたびに既存のアラームをすべて取り消して登録し直す。新しい機能もこの方式を前提に考える。
-- 同期のきっかけ: `ContentView.dataSignature` の変化、アプリがアクティブになったとき、バックグラウンド更新（`com.imamurahibiki.myAlarm.refresh`）。
-  - **アラームに影響するプロパティをモデルに追加したら、`dataSignature` にも追加すること。** 追加しないと変更が AlarmKit に反映されない。
+- **14 日先まで登録する方式**: iOS ではアプリが指定日に自分で切り替えられないため、`AlarmPlanner.horizonDays`（14 日）先までの日付指定アラームをまとめて登録しておく。新しい機能もこの方式を前提に考える。
+- 同期は差分方式。`PlannedAlarm.alarmID`（内容から決まる UUID）で AlarmKit の登録と突き合わせ、不要な分の取り消しと新しい分の登録だけを行う。鳴っている最中（`.alerting`）のアラームは取り消さない。
+- 同期のきっかけ: `ContentView.plannedAlarms`（AlarmPlanner の結果）の変化、アプリがアクティブになったとき、バックグラウンド更新（`com.imamurahibiki.myAlarm.refresh`）。
+  - **アラームの鳴り方に関わる値は `PlannedAlarm` に含めること。** 含めれば変更の検知と登録 ID に自動で反映される。含めないと変更が AlarmKit に反映されない。
 - SwiftData のコンテナは `AppData.container`（MyAlarmApp.swift）で共有する。アラームの「起きた」ボタン（`WakeUpIntent`）からアプリが裏で起動されたときもこれを使う。
 - 「起きた」で止めた範囲は `AlarmScheduler.suppressedUntil`（UserDefaults に保存）で持つ。この時刻までのアラームは同期時に登録しない。止める範囲は `AlarmPlanner.seriesEnd`（間隔 `seriesGap` 以内で連なるアラーム）で決める。
 - 優先順位: 予約（`ShiftReservation`）> 基本テンプレート（`isActive` の `AlarmTemplate`）。予約の `template == nil` は「休み」。
