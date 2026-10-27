@@ -74,6 +74,7 @@ struct TemplateListView: View {
         )
         context.insert(template)
         if let source {
+            template.wakeUpButtonText = source.wakeUpButtonText
             template.importAlarms(from: source)
         }
         draftID = template.persistentModelID
@@ -82,6 +83,10 @@ struct TemplateListView: View {
 }
 
 struct TemplateEditView: View {
+    private enum Field {
+        case name, wakeUpButton
+    }
+
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Bindable var template: AlarmTemplate
@@ -93,7 +98,7 @@ struct TemplateEditView: View {
     @State private var isBulkLabelPresented = false
     @State private var isSelecting = false
     @State private var selection: Set<PersistentIdentifier> = []
-    @FocusState private var isNameFocused: Bool
+    @FocusState private var focusedField: Field?
     @State private var initialSnapshot: TemplateSnapshot?
     @State private var isDiscardConfirming = false
     @State private var isDiscarded = false
@@ -102,8 +107,18 @@ struct TemplateEditView: View {
         Form {
             Section("名前") {
                 TextField("例: 日勤", text: $template.name)
-                    .focused($isNameFocused)
+                    .focused($focusedField, equals: .name)
                     .submitLabel(.done)
+            }
+
+            Section {
+                TextField(AlarmTemplate.defaultWakeUpButtonText, text: $template.wakeUpButtonText)
+                    .focused($focusedField, equals: .wakeUpButton)
+                    .submitLabel(.done)
+            } header: {
+                Text("「起きた」ボタンの表示名")
+            } footer: {
+                Text("アラームが鳴ったときのボタンの文字です。空欄なら「起きた」になります。長いと途中で切れることがあるので、短めがおすすめです。")
             }
 
             Section("色") {
@@ -121,7 +136,7 @@ struct TemplateEditView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .onTapGesture {
-                                isNameFocused = false
+                                focusedField = nil
                                 template.color = color
                             }
                     }
@@ -140,7 +155,7 @@ struct TemplateEditView: View {
                         AlarmRow(alarm: alarm)
                             .contentShape(.rect)
                             .onTapGesture { editing = .existing(alarm) }
-                            .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
+                            .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
                     }
                 }
                 .onDelete { offsets in
@@ -167,12 +182,12 @@ struct TemplateEditView: View {
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("完了") { isNameFocused = false }
+                Button("完了") { focusedField = nil }
             }
             if isSelecting || !template.alarms.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     Button(isSelecting ? "完了" : "選択") {
-                        isNameFocused = false
+                        focusedField = nil
                         isSelecting.toggle()
                         selection = []
                     }
@@ -237,7 +252,7 @@ struct TemplateEditView: View {
 
     /// 何も変えていなければそのまま閉じ、変えていれば破棄してよいか確認する。
     private func cancelNew() {
-        isNameFocused = false
+        focusedField = nil
         if TemplateSnapshot(template) == initialSnapshot {
             discard()
         } else {
@@ -253,16 +268,16 @@ struct TemplateEditView: View {
     @ViewBuilder
     private var alarmActions: some View {
         Button("アラームを追加", systemImage: "plus.circle.fill") {
-            isNameFocused = false
+            focusedField = nil
             editing = .new
         }
         Button("時間帯でまとめて追加", systemImage: "list.bullet.indent") {
-            isNameFocused = false
+            focusedField = nil
             isBulkInputPresented = true
         }
         if !template.alarms.isEmpty {
             Button("ラベルをまとめて設定", systemImage: "tag") {
-                isNameFocused = false
+                focusedField = nil
                 isBulkLabelPresented = true
             }
         }
@@ -280,7 +295,7 @@ struct TemplateEditView: View {
             } label: {
                 Label("他のテンプレートから取り込む", systemImage: "square.and.arrow.down")
             }
-            .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
+            .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
         }
     }
 }
@@ -296,11 +311,13 @@ private struct TemplateSnapshot: Equatable {
 
     let name: String
     let colorName: String
+    let wakeUpButtonText: String
     let alarms: [Alarm]
 
     init(_ template: AlarmTemplate) {
         name = template.name
         colorName = template.colorName
+        wakeUpButtonText = template.wakeUpButtonText
         alarms = template.sortedAlarms.map { Alarm(hour: $0.hour, minute: $0.minute, label: $0.label, isEnabled: $0.isEnabled) }
     }
 }

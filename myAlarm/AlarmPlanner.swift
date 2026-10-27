@@ -28,6 +28,8 @@ struct PlannedAlarm: Hashable {
     let date: Date
     let title: String
     let color: TemplateColor
+    /// 「起きた」ボタンの表示名
+    let wakeUpButtonTitle: String
 }
 
 enum AlarmPlanner {
@@ -85,12 +87,17 @@ enum AlarmPlanner {
                       let date = calendar.date(bySettingHour: alarm.hour, minute: alarm.minute, second: 0, of: day)
                 else { return nil }
                 let title = alarm.label.isEmpty ? template.name : "\(template.name)・\(alarm.label)"
-                return PlannedAlarm(date: date, title: title, color: template.color)
+                return PlannedAlarm(date: date, title: title, color: template.color, wakeUpButtonTitle: template.wakeUpButtonTitle)
             }
             let dayOneOffs = (oneOffsByDay[day] ?? []).sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
             let oneOffAlarms = dayOneOffs.compactMap { oneOff -> PlannedAlarm? in
                 guard let date = calendar.date(bySettingHour: oneOff.hour, minute: oneOff.minute, second: 0, of: day) else { return nil }
-                return PlannedAlarm(date: date, title: oneOff.title, color: OneOffAlarm.color)
+                return PlannedAlarm(
+                    date: date,
+                    title: oneOff.title,
+                    color: OneOffAlarm.color,
+                    wakeUpButtonTitle: AlarmTemplate.defaultWakeUpButtonText
+                )
             }
             let alarms = (templateAlarms + oneOffAlarms).sorted { $0.date < $1.date }
             return DayPlan(day: day, source: source, template: template, oneOffs: dayOneOffs, alarms: alarms)
