@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import TipKit
 
 /// アプリ全体で共有する SwiftData のコンテナ。アラームのボタンから起動されたときにも使う。
 enum AppData {
@@ -20,6 +21,9 @@ struct MyAlarmApp: App {
 
     init() {
         SampleData.seedIfNeeded(container.mainContext)
+        try? Tips.configure([.displayFrequency(.immediate)])
+        // 前回ツアーの途中で終了していても、起動時は始まっていない状態にする
+        GuideTour.step = 0
     }
 
     var body: some Scene {

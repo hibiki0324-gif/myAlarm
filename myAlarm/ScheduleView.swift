@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import TipKit
 
 /// 基本テンプレートの一括切り替えと、カレンダーで日ごとの予定を確認・変更する画面。
 struct ScheduleView: View {
@@ -14,61 +15,127 @@ struct ScheduleView: View {
     @State private var isBulkApplyPresented = false
     /// 時間がたっても「次のアラーム」や今日の表示が古くならないよう、定期的に更新する
     @State private var now = Date.now
+    @State private var isTourConfirming = false
+    /// 表示中のツアーのステップ（0 = ツアーなし）。GuideTour.step はスクロール後に合わせる。
+    @State private var tourStep = 0
+    @State private var tourRun = 0
+
+    /// ツアーで吹き出しを出す場所。スクロールして見える位置に持ってくるのに使う。
+    private enum TourAnchor: Hashable {
+        case nextAlarm, baseTemplate, calendar
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                if scheduler.authorizationState == .denied {
-                    Section {
-                        Label("アラームが許可されていません", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                        Button("設定を開く") {
-                            if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+            ScrollViewReader { proxy in
+                List {
+                    if scheduler.authorizationState == .denied {
+                        Section {
+                            Label("アラームが許可されていません", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            Button("設定を開く") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                            }
                         }
                     }
-                }
 
-                Section {
-                    nextAlarmView
-                }
-
-                Section {
-                    baseTemplateSwitcher
-                } header: {
-                    Text("基本テンプレート")
-                } footer: {
-                    Text("予約がない日はここで選んだテンプレートのアラームが鳴ります。")
-                }
-
-                Section {
-                    MonthCalendarView(month: $month, plans: monthPlans, now: now) { day in
-                        selectedDay = SelectedDay(day: day)
+                    Section {
+                        nextAlarmSummary
+                            .id(TourAnchor.nextAlarm)
+                            .popoverTip(tourTip(1)) { handleTour($0, proxy: proxy) }
+                        wakeUpRow
                     }
-                    CalendarLegend()
-                } header: {
-                    Text("予定")
-                } footer: {
-                    footerText
+
+                    Section {
+                        baseTemplateSwitcher
+                            .id(TourAnchor.baseTemplate)
+                            .popoverTip(tourTip(2)) { handleTour($0, proxy: proxy) }
+                    } header: {
+                        Text("基本テンプレート")
+                    } footer: {
+                        Text("予約がない日はここで選んだテンプレートのアラームが鳴ります。")
+                    }
+
+                    Section {
+                        MonthCalendarView(month: $month, plans: monthPlans, now: now) { day in
+                            selectedDay = SelectedDay(day: day)
+                        }
+                        .id(TourAnchor.calendar)
+                        .popoverTip(tourTip(3)) { handleTour($0, proxy: proxy) }
+                        CalendarLegend()
+                    } header: {
+                        Text("予定")
+                    } footer: {
+                        footerText
+                    }
+                }
+                .navigationTitle("予定")
+                .tipViewStyle(TourTipStyle())
+                .toolbar {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button("ガイドツアー", systemImage: "questionmark.circle") {
+                            isTourConfirming = true
+                        }
+                        .popoverTip(tourTip(5)) { handleTour($0, proxy: proxy) }
+                        Button("まとめて設定", systemImage: "calendar.badge.plus") {
+                            isBulkApplyPresented = true
+                        }
+                        .popoverTip(tourTip(4)) { handleTour($0, proxy: proxy) }
+                    }
+                }
+                .alert("ガイドツアーを開始しますか？", isPresented: $isTourConfirming) {
+                    Button("キャンセル", role: .cancel) {}
+                    Button("はい") {
+                        tourRun += 1
+                        goToTourStep(1, proxy: proxy)
+                    }
+                }
+                .sheet(item: $selectedDay) { selected in
+                    DayDetailSheet(day: selected.day)
+                }
+                .sheet(isPresented: $isBulkApplyPresented) {
+                    BulkApplySheet(initialDate: initialBulkDate)
+                }
+                .task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(30))
+                        now = .now
+                    }
                 }
             }
-            .navigationTitle("予定")
-            .toolbar {
-                Button("まとめて設定", systemImage: "calendar.badge.plus") {
-                    isBulkApplyPresented = true
-                }
-            }
-            .sheet(item: $selectedDay) { selected in
-                DayDetailSheet(day: selected.day)
-            }
-            .sheet(isPresented: $isBulkApplyPresented) {
-                BulkApplySheet(initialDate: initialBulkDate)
-            }
-            .task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(30))
-                    now = .now
-                }
-            }
+        }
+    }
+
+    // MARK: - ガイドツアー
+
+    /// そのステップの吹き出し。ツアー中でなければ nil（何も出さない）。
+    private func tourTip(_ step: Int) -> TourTip? {
+        tourRun > 0 ? GuideTour.tip(step: step, run: tourRun) : nil
+    }
+
+    private func handleTour(_ action: Tips.Action, proxy: ScrollViewProxy) {
+        if action.id == TourTip.nextActionID, tourStep < GuideTour.count {
+            goToTourStep(tourStep + 1, proxy: proxy)
+        } else {
+            goToTourStep(0, proxy: proxy)
+        }
+    }
+
+    /// 吹き出しの場所が見えるようにスクロールしてから、そのステップの吹き出しを出す。
+    private func goToTourStep(_ step: Int, proxy: ScrollViewProxy) {
+        tourStep = step
+        GuideTour.step = 0
+        guard step > 0 else { return }
+        let anchor: TourAnchor = switch step {
+        case 2: .baseTemplate
+        case 3: .calendar
+        default: .nextAlarm
+        }
+        withAnimation { proxy.scrollTo(anchor, anchor: .center) }
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard tourStep == step else { return }
+            GuideTour.step = step
         }
     }
 
@@ -82,38 +149,46 @@ struct ScheduleView: View {
         Calendar.current.isDate(month, equalTo: now, toGranularity: .month) ? now : month
     }
 
-    @ViewBuilder
-    private var nextAlarmView: some View {
-        let plans = AlarmPlanner.plans(
+    private var upcomingAlarms: [PlannedAlarm] {
+        AlarmPlanner.plans(
             days: AlarmPlanner.horizonDays,
             from: now,
             templates: templates,
             reservations: reservations,
             oneOffs: oneOffs
-        )
-        let alarms = plans.flatMap(\.alarms)
-        let suppressedUntil = scheduler.activeSuppression(at: now)
-        let notBefore = max(now, suppressedUntil ?? now)
-        if let next = alarms.first(where: { $0.date > notBefore }) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("次のアラーム")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline) {
-                    Text(next.date, format: .dateTime.hour().minute())
-                        .font(.system(size: 44, weight: .semibold, design: .rounded))
-                    Text(next.date, format: .relative(presentation: .named))
-                        .foregroundStyle(.secondary)
-                }
-                Text(next.title)
-                    .foregroundStyle(next.color.color)
-            }
-        } else {
-            Text("予定されているアラームはありません")
-                .foregroundStyle(.secondary)
-        }
+        ).flatMap(\.alarms)
+    }
 
-        if let until = suppressedUntil {
+    /// 次に鳴るアラーム（「起きた」で止めている分は飛ばす）。
+    private var nextAlarmSummary: some View {
+        let notBefore = max(now, scheduler.activeSuppression(at: now) ?? now)
+        return Group {
+            if let next = upcomingAlarms.first(where: { $0.date > notBefore }) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("次のアラーム")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(next.date, format: .dateTime.hour().minute())
+                            .font(.system(size: 44, weight: .semibold, design: .rounded))
+                        Text(next.date, format: .relative(presentation: .named))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(next.title)
+                        .foregroundStyle(next.color.color)
+                }
+            } else {
+                Text("予定されているアラームはありません")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// 止めている間は「元に戻す」、そうでなければ「起きた」を出す。
+    @ViewBuilder
+    private var wakeUpRow: some View {
+        let alarms = upcomingAlarms
+        if let until = scheduler.activeSuppression(at: now) {
             HStack {
                 Label("\(until.formatted(.dateTime.hour().minute()))までのアラームを止めています", systemImage: "sun.max.fill")
                     .font(.subheadline)
