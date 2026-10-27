@@ -10,6 +10,8 @@ final class AlarmTemplate {
     /// 予約がない日に使われる「基本テンプレート」かどうか。同時に true になるのは 1 つだけ。
     var isActive: Bool
     var createdAt: Date
+    /// アラームが鳴ったときの「起きた」ボタンの表示名。空なら「起きた」。
+    var wakeUpButtonText: String = ""
 
     @Relationship(deleteRule: .cascade, inverse: \TemplateAlarm.template)
     var alarms: [TemplateAlarm] = []
@@ -27,6 +29,13 @@ final class AlarmTemplate {
     var color: TemplateColor {
         get { TemplateColor(rawValue: colorName) ?? .blue }
         set { colorName = newValue.rawValue }
+    }
+
+    static let defaultWakeUpButtonText = "起きた"
+
+    var wakeUpButtonTitle: String {
+        let text = wakeUpButtonText.trimmingCharacters(in: .whitespaces)
+        return text.isEmpty ? Self.defaultWakeUpButtonText : text
     }
 
     var sortedAlarms: [TemplateAlarm] {

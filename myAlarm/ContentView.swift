@@ -30,6 +30,7 @@ struct ContentView: View {
             hasher.combine(template.name)
             hasher.combine(template.colorName)
             hasher.combine(template.isActive)
+            hasher.combine(template.wakeUpButtonText)
         }
         for alarm in alarms.sorted(by: { $0.persistentModelID.hashValue < $1.persistentModelID.hashValue }) {
             hasher.combine(alarm.persistentModelID)

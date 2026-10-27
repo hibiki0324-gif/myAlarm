@@ -136,7 +136,11 @@ final class AlarmScheduler {
 
     private func configuration(for planned: PlannedAlarm) -> AlarmManager.AlarmConfiguration<ShiftAlarmMetadata> {
         let stopButton = AlarmButton(text: "停止", textColor: .white, systemImageName: "stop.circle")
-        let wakeUpButton = AlarmButton(text: "起きた", textColor: .white, systemImageName: "sun.max.fill")
+        let wakeUpButton = AlarmButton(
+            text: LocalizedStringResource(stringLiteral: planned.wakeUpButtonTitle),
+            textColor: .white,
+            systemImageName: "sun.max.fill"
+        )
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: planned.title),
             stopButton: stopButton,
