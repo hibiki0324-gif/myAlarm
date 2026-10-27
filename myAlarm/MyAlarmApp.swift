@@ -30,12 +30,15 @@ struct MyAlarmApp: App {
         .modelContainer(container)
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active: scheduler.requestSync()
+            case .active:
+                DataCleanup.removeExpired(container.mainContext)
+                scheduler.requestSync()
             case .background: scheduler.scheduleAppRefresh()
             default: break
             }
         }
         .backgroundTask(.appRefresh(AlarmScheduler.refreshTaskID)) {
+            await DataCleanup.removeExpired()
             await AlarmScheduler.shared.syncNow()
             await AlarmScheduler.shared.scheduleAppRefresh()
         }

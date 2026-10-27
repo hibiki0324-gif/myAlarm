@@ -48,7 +48,10 @@ struct ScheduleView: View {
                 } header: {
                     Text("予定")
                 } footer: {
-                    footerText
+                    VStack(alignment: .leading, spacing: 6) {
+                        footerText
+                        Text("先月より前の日付ごとの指定と「この日だけのアラーム」は、アプリを開いたときに自動で削除されます。")
+                    }
                 }
             }
             .navigationTitle("予定")
