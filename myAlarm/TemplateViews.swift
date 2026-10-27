@@ -116,9 +116,9 @@ struct TemplateEditView: View {
                     .focused($focusedField, equals: .wakeUpButton)
                     .submitLabel(.done)
             } header: {
-                Text("「起きた」ボタンの表示名")
+                Text("一括停止ボタンの表示名")
             } footer: {
-                Text("アラームが鳴ったときのボタンの文字です。空欄なら「起きた」になります。長いと途中で切れることがあるので、短めがおすすめです。")
+                Text("アラームが鳴ったときに表示される、続けて鳴る予定のアラームをまとめて止めるボタンの文字です。空欄なら「起きた」になります。長いと途中で切れることがあるので、短めがおすすめです。")
             }
 
             Section("色") {
