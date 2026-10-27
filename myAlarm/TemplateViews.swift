@@ -5,6 +5,8 @@ struct TemplateListView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \AlarmTemplate.createdAt) private var templates: [AlarmTemplate]
     @State private var path: [AlarmTemplate] = []
+    /// 作成中（まだ保存していない）のテンプレート
+    @State private var draftID: PersistentIdentifier?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -43,7 +45,10 @@ struct TemplateListView: View {
             }
             .navigationTitle("テンプレート")
             .navigationDestination(for: AlarmTemplate.self) { template in
-                TemplateEditView(template: template)
+                TemplateEditView(template: template, isNew: template.persistentModelID == draftID)
+            }
+            .onChange(of: path) {
+                if path.isEmpty { draftID = nil }
             }
             .toolbar {
                 Menu("追加", systemImage: "plus") {
@@ -71,13 +76,17 @@ struct TemplateListView: View {
         if let source {
             template.importAlarms(from: source)
         }
+        draftID = template.persistentModelID
         path.append(template)
     }
 }
 
 struct TemplateEditView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Bindable var template: AlarmTemplate
+    /// 新規作成中なら、「保存」を押すまでテンプレートを確定しない
+    var isNew = false
     @Query(sort: \AlarmTemplate.createdAt) private var templates: [AlarmTemplate]
     @State private var editing: AlarmEditTarget<TemplateAlarm>?
     @State private var isBulkInputPresented = false
@@ -85,6 +94,9 @@ struct TemplateEditView: View {
     @State private var isSelecting = false
     @State private var selection: Set<PersistentIdentifier> = []
     @FocusState private var isNameFocused: Bool
+    @State private var initialSnapshot: TemplateSnapshot?
+    @State private var isDiscardConfirming = false
+    @State private var isDiscarded = false
 
     var body: some View {
         Form {
@@ -143,7 +155,16 @@ struct TemplateEditView: View {
         .scrollDismissesKeyboard(.immediately)
         .navigationTitle(template.name.isEmpty ? "テンプレート" : template.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isNew)
         .toolbar {
+            if isNew {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") { cancelNew() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { dismiss() }
+                }
+            }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("完了") { isNameFocused = false }
@@ -195,6 +216,38 @@ struct TemplateEditView: View {
                 alarm.label = label
             }
         }
+        .confirmationDialog("変更内容を破棄しますか？", isPresented: $isDiscardConfirming, titleVisibility: .visible) {
+            Button("破棄する", role: .destructive) { discard() }
+            Button("編集を続ける", role: .cancel) {}
+        } message: {
+            Text("このテンプレートは作成されません。")
+        }
+        .onAppear {
+            if initialSnapshot == nil {
+                initialSnapshot = TemplateSnapshot(template)
+            }
+        }
+        .onDisappear {
+            // 画面が閉じきってから消す。表示中に消すと削除済みのモデルを参照してしまう。
+            if isDiscarded {
+                context.delete(template)
+            }
+        }
+    }
+
+    /// 何も変えていなければそのまま閉じ、変えていれば破棄してよいか確認する。
+    private func cancelNew() {
+        isNameFocused = false
+        if TemplateSnapshot(template) == initialSnapshot {
+            discard()
+        } else {
+            isDiscardConfirming = true
+        }
+    }
+
+    private func discard() {
+        isDiscarded = true
+        dismiss()
     }
 
     @ViewBuilder
@@ -229,6 +282,26 @@ struct TemplateEditView: View {
             }
             .simultaneousGesture(TapGesture().onEnded { isNameFocused = false })
         }
+    }
+}
+
+/// 新規作成中に変更があったかを比べるための、テンプレートの内容の写し。
+private struct TemplateSnapshot: Equatable {
+    struct Alarm: Equatable {
+        let hour: Int
+        let minute: Int
+        let label: String
+        let isEnabled: Bool
+    }
+
+    let name: String
+    let colorName: String
+    let alarms: [Alarm]
+
+    init(_ template: AlarmTemplate) {
+        name = template.name
+        colorName = template.colorName
+        alarms = template.sortedAlarms.map { Alarm(hour: $0.hour, minute: $0.minute, label: $0.label, isEnabled: $0.isEnabled) }
     }
 }
 
