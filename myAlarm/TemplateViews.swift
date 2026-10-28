@@ -165,12 +165,16 @@ struct TemplateEditView: View {
             }
 
             Section("アラーム") {
-                ForEach(template.sortedAlarms) { alarm in
+                // 並べ替えたアラームの一覧は、描画 1 回につき 1 度だけ作る
+                let alarms = template.sortedAlarms
+                ForEach(alarms) { alarm in
                     if isSelecting {
-                        SelectableRow(isSelected: selection.contains(alarm.persistentModelID)) {
+                        let id = alarm.persistentModelID
+                        SelectableRow(isSelected: selection.contains(id)) {
+                            selection.formSymmetricDifference([id])
+                        } content: {
                             AlarmTimeLabel(timeText: alarm.timeText, label: alarm.label, isEnabled: alarm.isEnabled)
                         }
-                        .onTapGesture { selection.formSymmetricDifference([alarm.persistentModelID]) }
                     } else {
                         AlarmRow(alarm: alarm)
                             .contentShape(.rect)
@@ -179,11 +183,11 @@ struct TemplateEditView: View {
                     }
                 }
                 .onDelete { offsets in
-                    let sorted = template.sortedAlarms
-                    for index in offsets { context.delete(sorted[index]) }
+                    for index in offsets { context.delete(alarms[index]) }
                 }
+                .deleteDisabled(isSelecting)
                 if !isSelecting {
-                    alarmActions
+                    alarmActions(hasAlarms: !alarms.isEmpty)
                 }
             }
 
@@ -231,7 +235,7 @@ struct TemplateEditView: View {
         .selectionDeleteBar(
             isSelecting: isSelecting,
             selection: $selection,
-            allIDs: template.alarms.map(\.persistentModelID)
+            allIDs: { template.alarms.map(\.persistentModelID) }
         ) {
             for alarm in template.alarms where selection.contains(alarm.persistentModelID) {
                 context.delete(alarm)
@@ -314,7 +318,7 @@ struct TemplateEditView: View {
     }
 
     @ViewBuilder
-    private var alarmActions: some View {
+    private func alarmActions(hasAlarms: Bool) -> some View {
         Button("アラームを追加", systemImage: "plus.circle.fill") {
             focusedField = nil
             editing = .new
@@ -323,7 +327,7 @@ struct TemplateEditView: View {
             focusedField = nil
             isBulkInputPresented = true
         }
-        if !template.alarms.isEmpty {
+        if hasAlarms {
             Button("ラベルをまとめて設定", systemImage: "tag") {
                 focusedField = nil
                 isBulkLabelPresented = true
@@ -400,57 +404,70 @@ private struct AlarmTimeLabel: View {
 }
 
 /// 選択モードで使う、左に丸いチェックが付いた行。
+/// onTapGesture ではなく Button にして、タップにすぐ反応するようにしている。
 struct SelectableRow<Content: View>: View {
     let isSelected: Bool
+    let onToggle: () -> Void
     @ViewBuilder let content: Content
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.title2)
-                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-            content
-            Spacer()
+        Button(action: onToggle) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                content
+                Spacer()
+            }
+            .contentShape(.rect)
         }
-        .contentShape(.rect)
+        .tint(.primary)
     }
 }
 
-/// 選択モードのとき、リストの下に「すべて選択」と「削除」のバーを出す。削除の前に確認する。
-/// ツールバーの bottomBar はタブバーと重なるため使わない。
+/// 選択モードのとき、下のツールバーに「すべて選択」と「削除」を出す。削除の前に確認する。
+/// 選択中はタブバーを隠して、ツールバーと重ならないようにする（写真アプリなどと同じ形）。
 private struct SelectionDeleteBar: ViewModifier {
     let isSelecting: Bool
     @Binding var selection: Set<PersistentIdentifier>
-    let allIDs: [PersistentIdentifier]
+    /// すべて選択を押したときだけ呼ぶ
+    let allIDs: () -> [PersistentIdentifier]
+    let onDelete: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .toolbar(isSelecting ? .hidden : .automatic, for: .tabBar)
+            .toolbar {
+                if isSelecting {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button(selection.isEmpty ? "すべて選択" : "選択解除") {
+                            selection = selection.isEmpty ? Set(allIDs()) : []
+                        }
+                    }
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) {
+                        DeleteSelectionButton(count: selection.count, onDelete: onDelete)
+                    }
+                }
+            }
+    }
+}
+
+/// 確認ダイアログをボタン自体に付けて、ボタンの位置から出す。
+private struct DeleteSelectionButton: View {
+    let count: Int
     let onDelete: () -> Void
 
     @State private var isConfirming = false
 
-    func body(content: Content) -> some View {
-        content
-            .safeAreaInset(edge: .bottom) {
-                if isSelecting {
-                    let isAllSelected = !allIDs.isEmpty && selection.count == allIDs.count
-                    HStack {
-                        Button(isAllSelected ? "選択解除" : "すべて選択") {
-                            selection = isAllSelected ? [] : Set(allIDs)
-                        }
-                        Spacer()
-                        Button(selection.isEmpty ? "削除" : "\(selection.count)件を削除", systemImage: "trash", role: .destructive) {
-                            isConfirming = true
-                        }
-                        .disabled(selection.isEmpty)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .glassEffect()
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-                }
-            }
-            .confirmationDialog("\(selection.count)件のアラームを削除しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
-                Button("削除", role: .destructive, action: onDelete)
-            }
+    var body: some View {
+        Button(count == 0 ? "削除" : "\(count)件を削除", systemImage: "trash", role: .destructive) {
+            isConfirming = true
+        }
+        .disabled(count == 0)
+        .confirmationDialog("\(count)件のアラームを削除しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
+            Button("削除", role: .destructive, action: onDelete)
+        }
     }
 }
 
@@ -458,7 +475,7 @@ extension View {
     func selectionDeleteBar(
         isSelecting: Bool,
         selection: Binding<Set<PersistentIdentifier>>,
-        allIDs: [PersistentIdentifier],
+        allIDs: @escaping () -> [PersistentIdentifier],
         onDelete: @escaping () -> Void
     ) -> some View {
         modifier(SelectionDeleteBar(isSelecting: isSelecting, selection: selection, allIDs: allIDs, onDelete: onDelete))

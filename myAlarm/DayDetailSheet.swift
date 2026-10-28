@@ -55,10 +55,12 @@ struct DayDetailSheet: View {
                 Section {
                     ForEach(plan?.oneOffs ?? []) { oneOff in
                         if isSelecting {
-                            SelectableRow(isSelected: selection.contains(oneOff.persistentModelID)) {
+                            let id = oneOff.persistentModelID
+                            SelectableRow(isSelected: selection.contains(id)) {
+                                selection.formSymmetricDifference([id])
+                            } content: {
                                 oneOffLabel(oneOff)
                             }
-                            .onTapGesture { selection.formSymmetricDifference([oneOff.persistentModelID]) }
                         } else {
                             oneOffLabel(oneOff)
                                 .contentShape(.rect)
@@ -69,6 +71,7 @@ struct DayDetailSheet: View {
                         let sorted = plan?.oneOffs ?? []
                         for index in offsets { context.delete(sorted[index]) }
                     }
+                    .deleteDisabled(isSelecting)
                     if !isSelecting {
                         Button("アラームを追加", systemImage: "plus.circle.fill") {
                             editing = .new
@@ -109,7 +112,7 @@ struct DayDetailSheet: View {
             .selectionDeleteBar(
                 isSelecting: isSelecting,
                 selection: $selection,
-                allIDs: (plan?.oneOffs ?? []).map(\.persistentModelID)
+                allIDs: { (plan?.oneOffs ?? []).map(\.persistentModelID) }
             ) {
                 for oneOff in plan?.oneOffs ?? [] where selection.contains(oneOff.persistentModelID) {
                     context.delete(oneOff)
