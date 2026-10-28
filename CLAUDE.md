@@ -24,6 +24,8 @@ xcodebuild -project myAlarm.xcodeproj -scheme myAlarm \
 - データの流れ: SwiftData のモデル → `AlarmPlanner.plans(...)`（純粋関数）→ `AlarmScheduler` が AlarmKit に登録。
 - **14 日先まで登録する方式**: iOS ではアプリが指定日に自分で切り替えられないため、`AlarmPlanner.horizonDays`（14 日）先までの日付指定アラームをまとめて登録しておく。新しい機能もこの方式を前提に考える。
 - 同期は差分方式。`PlannedAlarm.alarmID`（内容から決まる UUID）で AlarmKit の登録と突き合わせ、不要な分の取り消しと新しい分の登録だけを行う。鳴っている最中（`.alerting`）のアラームは取り消さない。
+  - **`AlarmScheduler.configuration` の作り方（ボタンや Intent など）を変えたら `PlannedAlarm.configurationVersion` を上げること。** 上げないと、登録済みのアラームは古い設定のまま残る。
+- 一括停止ボタン（`WakeUpIntent`）は `.custom` なので、iOS は鳴っているアラームを止めない。Intent の中で `AlarmManager.stop(id:)` を呼んで止めている。
 - 同期のきっかけ: `ContentView.plannedAlarms`（AlarmPlanner の結果）の変化、アプリがアクティブになったとき、バックグラウンド更新（`com.imamurahibiki.myAlarm.refresh`）。
   - **アラームの鳴り方に関わる値は `PlannedAlarm` に含めること。** 含めれば変更の検知と登録 ID に自動で反映される。含めないと変更が AlarmKit に反映されない。
 - SwiftData のコンテナは `AppData.container`（MyAlarmApp.swift）で共有する。アラームの「起きた」ボタン（`WakeUpIntent`）からアプリが裏で起動されたときもこれを使う。
