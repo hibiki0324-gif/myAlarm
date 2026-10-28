@@ -7,11 +7,25 @@ import SwiftUI
 
 nonisolated struct ShiftAlarmMetadata: AlarmMetadata {}
 
-/// 鳴っているアラームの「起きた」ボタンで実行され、続けて鳴る予定のアラームを止める。
-nonisolated struct WakeUpIntent: LiveActivityIntent {
+/// 鳴っているアラームの「起きた」ボタンで実行され、そのアラームと、続けて鳴る予定のアラームを止める。
+struct WakeUpIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "起きた"
 
+    /// 鳴っているアラームの ID
+    @Parameter(title: "アラーム ID")
+    var alarmID: String
+
+    init() {}
+
+    init(alarmID: UUID) {
+        self.alarmID = alarmID.uuidString
+    }
+
     func perform() async throws -> some IntentResult {
+        // ボタンの種類が .custom なので、iOS は鳴っているアラームを止めない。ここで止める。
+        if let id = UUID(uuidString: alarmID) {
+            try? AlarmManager.shared.stop(id: id)
+        }
         await AlarmScheduler.shared.markAwake(from: .now)
         return .result()
     }
@@ -130,7 +144,7 @@ final class AlarmScheduler {
             }
             let existingIDs = Set(existing.map(\.id))
             for (id, planned) in desired where !existingIDs.contains(id) {
-                _ = try await manager.schedule(id: id, configuration: configuration(for: planned))
+                _ = try await manager.schedule(id: id, configuration: configuration(for: planned, id: id))
             }
             scheduledCount = desired.count
             scheduledUntil = plans.last?.day
@@ -140,7 +154,7 @@ final class AlarmScheduler {
         }
     }
 
-    private func configuration(for planned: PlannedAlarm) -> AlarmManager.AlarmConfiguration<ShiftAlarmMetadata> {
+    private func configuration(for planned: PlannedAlarm, id: UUID) -> AlarmManager.AlarmConfiguration<ShiftAlarmMetadata> {
         let stopButton = AlarmButton(text: "停止", textColor: .white, systemImageName: "stop.circle")
         let wakeUpButton = AlarmButton(
             text: LocalizedStringResource(stringLiteral: planned.wakeUpButtonTitle),
@@ -157,6 +171,6 @@ final class AlarmScheduler {
             presentation: AlarmPresentation(alert: alert),
             tintColor: planned.color.color
         )
-        return .alarm(schedule: .fixed(planned.date), attributes: attributes, secondaryIntent: WakeUpIntent())
+        return .alarm(schedule: .fixed(planned.date), attributes: attributes, secondaryIntent: WakeUpIntent(alarmID: id))
     }
 }

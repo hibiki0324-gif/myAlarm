@@ -34,9 +34,13 @@ struct PlannedAlarm: Hashable {
     /// 「起きた」ボタンの表示名
     let wakeUpButtonTitle: String
 
+    /// 登録内容の作り方（AlarmScheduler.configuration）を変えたら上げる。
+    /// ID が変わるので、次の同期で登録済みのアラームがすべて新しい内容で登録し直される。
+    static let configurationVersion = 2
+
     /// 内容から決まる ID。内容が同じなら同期のたびに同じ ID になるので、変わった分だけ登録し直せる。
     var alarmID: UUID {
-        let key = "\(date.timeIntervalSince1970)|\(title)|\(color.rawValue)|\(wakeUpButtonTitle)"
+        let key = "v\(Self.configurationVersion)|\(date.timeIntervalSince1970)|\(title)|\(color.rawValue)|\(wakeUpButtonTitle)"
         var bytes = Array(SHA256.hash(data: Data(key.utf8)).prefix(16))
         bytes[6] = (bytes[6] & 0x0F) | 0x50 // バージョン 5 相当
         bytes[8] = (bytes[8] & 0x3F) | 0x80 // RFC 4122 バリアント
