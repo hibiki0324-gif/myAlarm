@@ -2,13 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct ContentView: View {
-    @Environment(AlarmScheduler.self) private var scheduler
-    @Query private var templates: [AlarmTemplate]
-    /// テンプレートのアラームの追加・削除も検知するため
-    @Query private var templateAlarms: [TemplateAlarm]
-    @Query private var reservations: [ShiftReservation]
-    @Query private var oneOffs: [OneOffAlarm]
-
     var body: some View {
         TabView {
             Tab("予定", systemImage: "calendar") {
@@ -18,12 +11,27 @@ struct ContentView: View {
                 TemplateListView()
             }
         }
-        .onChange(of: plannedAlarms) {
-            scheduler.requestSync()
-        }
+        .background { AlarmSyncObserver() }
+    }
+}
+
+/// 登録すべきアラームの一覧を見張り、変わったら同期を依頼する。何も表示しない。
+/// データが変わるたびに描き直されるので、他の画面を巻き込まないよう独立したビューにしている。
+private struct AlarmSyncObserver: View {
+    @Environment(AlarmScheduler.self) private var scheduler
+    @Query private var templates: [AlarmTemplate]
+    /// テンプレートのアラームの追加・削除も検知するため
+    @Query private var templateAlarms: [TemplateAlarm]
+    @Query private var reservations: [ShiftReservation]
+    @Query private var oneOffs: [OneOffAlarm]
+
+    var body: some View {
+        Color.clear
+            .onChange(of: plannedAlarms) {
+                scheduler.requestSync()
+            }
     }
 
-    /// 登録すべきアラームの一覧。これが変わったときだけ同期する。
     /// アラームに影響する値は PlannedAlarm に含まれるので、モデルに項目を足してもここを直す必要はない。
     private var plannedAlarms: [PlannedAlarm] {
         AlarmPlanner.plans(

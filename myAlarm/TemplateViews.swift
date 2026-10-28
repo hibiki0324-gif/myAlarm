@@ -126,15 +126,19 @@ struct TemplateEditView: View {
     @State private var selection: Set<PersistentIdentifier> = []
     @FocusState private var focusedField: Field?
     @State private var initialSnapshot: TemplateSnapshot?
+    /// 入力中の文字。1 文字ごとにモデルを書き換えると関係する画面がすべて描き直されるので、確定時にまとめて反映する。
+    @State private var nameDraft = ""
+    @State private var wakeUpDraft = ""
     @State private var isDiscardConfirming = false
     @State private var isDiscarded = false
 
     var body: some View {
         Form {
             Section("名前") {
-                TextField("例: 日勤", text: $template.name)
+                TextField("例: 日勤", text: $nameDraft)
                     .focused($focusedField, equals: .name)
                     .submitLabel(.done)
+                    .onSubmit(commitDrafts)
             }
 
             Section("色") {
@@ -184,9 +188,10 @@ struct TemplateEditView: View {
             }
 
             Section {
-                TextField(AlarmTemplate.defaultWakeUpButtonText, text: $template.wakeUpButtonText)
+                TextField(AlarmTemplate.defaultWakeUpButtonText, text: $wakeUpDraft)
                     .focused($focusedField, equals: .wakeUpButton)
                     .submitLabel(.done)
+                    .onSubmit(commitDrafts)
             } header: {
                 Text("一括停止ボタンの表示名")
             } footer: {
@@ -194,7 +199,7 @@ struct TemplateEditView: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
-        .navigationTitle(template.name.isEmpty ? "テンプレート" : template.name)
+        .navigationTitle(nameDraft.isEmpty ? "テンプレート" : nameDraft)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isNew)
         .toolbar {
@@ -203,7 +208,10 @@ struct TemplateEditView: View {
                     Button("キャンセル") { cancelNew() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { dismiss() }
+                    Button("保存") {
+                        commitDrafts()
+                        dismiss()
+                    }
                 }
             }
             ToolbarItemGroup(placement: .keyboard) {
@@ -263,22 +271,36 @@ struct TemplateEditView: View {
         } message: {
             Text("このテンプレートは作成されません。")
         }
+        .onChange(of: focusedField) {
+            commitDrafts()
+        }
         .onAppear {
             if initialSnapshot == nil {
                 initialSnapshot = TemplateSnapshot(template)
+                nameDraft = template.name
+                wakeUpDraft = template.wakeUpButtonText
             }
         }
         .onDisappear {
             // 画面が閉じきってから消す。表示中に消すと削除済みのモデルを参照してしまう。
             if isDiscarded {
                 context.delete(template)
+            } else {
+                commitDrafts()
             }
         }
+    }
+
+    /// 入力中の文字をモデルに反映する。変わっていなければ書き込まない。
+    private func commitDrafts() {
+        if template.name != nameDraft { template.name = nameDraft }
+        if template.wakeUpButtonText != wakeUpDraft { template.wakeUpButtonText = wakeUpDraft }
     }
 
     /// 何も変えていなければそのまま閉じ、変えていれば破棄してよいか確認する。
     private func cancelNew() {
         focusedField = nil
+        commitDrafts()
         if TemplateSnapshot(template) == initialSnapshot {
             discard()
         } else {
