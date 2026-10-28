@@ -16,6 +16,9 @@ struct ScheduleView: View {
     @State private var now = Date.now
 
     var body: some View {
+        // 描画 1 回につき 1 度だけ計算して使い回す
+        let upcoming = upcomingAlarms
+
         NavigationStack {
             List {
                 if scheduler.authorizationState == .denied {
@@ -29,7 +32,8 @@ struct ScheduleView: View {
                 }
 
                 Section {
-                    nextAlarmView
+                    nextAlarmSummary(upcoming)
+                    wakeUpRow(upcoming)
                 }
 
                 Section {
@@ -69,7 +73,11 @@ struct ScheduleView: View {
             .task {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(30))
-                    now = .now
+                    // 表示は分単位なので、分が変わったときだけ描き直す
+                    let current = Date.now
+                    if !Calendar.current.isDate(current, equalTo: now, toGranularity: .minute) {
+                        now = current
+                    }
                 }
             }
         }
@@ -85,18 +93,20 @@ struct ScheduleView: View {
         Calendar.current.isDate(month, equalTo: now, toGranularity: .month) ? now : month
     }
 
-    @ViewBuilder
-    private var nextAlarmView: some View {
-        let plans = AlarmPlanner.plans(
+    private var upcomingAlarms: [PlannedAlarm] {
+        AlarmPlanner.plans(
             days: AlarmPlanner.horizonDays,
             from: now,
             templates: templates,
             reservations: reservations,
             oneOffs: oneOffs
-        )
-        let alarms = plans.flatMap(\.alarms)
-        let suppressedUntil = scheduler.activeSuppression(at: now)
-        let notBefore = max(now, suppressedUntil ?? now)
+        ).flatMap(\.alarms)
+    }
+
+    /// 次に鳴るアラーム（「起きた」で止めている分は飛ばす）。
+    @ViewBuilder
+    private func nextAlarmSummary(_ alarms: [PlannedAlarm]) -> some View {
+        let notBefore = max(now, scheduler.activeSuppression(at: now) ?? now)
         if let next = alarms.first(where: { $0.date > notBefore }) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("次のアラーム")
@@ -115,8 +125,12 @@ struct ScheduleView: View {
             Text("予定されているアラームはありません")
                 .foregroundStyle(.secondary)
         }
+    }
 
-        if let until = suppressedUntil {
+    /// 止めている間は「元に戻す」、そうでなければ「起きた」を出す。
+    @ViewBuilder
+    private func wakeUpRow(_ alarms: [PlannedAlarm]) -> some View {
+        if let until = scheduler.activeSuppression(at: now) {
             HStack {
                 Label("\(until.formatted(.dateTime.hour().minute()))までのアラームを止めています", systemImage: "sun.max.fill")
                     .font(.subheadline)
@@ -256,7 +270,7 @@ private struct MonthCalendarView: View {
                     Button {
                         onSelect(plan.day)
                     } label: {
-                        DayCell(plan: plan, now: now)
+                        DayCell(plan: plan, now: now, calendar: calendar)
                     }
                     .buttonStyle(.borderless)
                     .tint(.primary)
@@ -287,8 +301,7 @@ private struct MonthCalendarView: View {
 private struct DayCell: View {
     let plan: DayPlan
     let now: Date
-
-    private var calendar: Calendar { .current }
+    let calendar: Calendar
 
     var body: some View {
         VStack(spacing: 3) {

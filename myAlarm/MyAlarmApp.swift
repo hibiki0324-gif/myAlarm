@@ -32,14 +32,14 @@ struct MyAlarmApp: App {
             switch phase {
             case .active:
                 DataCleanup.removeExpired(container.mainContext)
-                scheduler.requestSync()
+                scheduler.requestSync(full: true)
             case .background: scheduler.scheduleAppRefresh()
             default: break
             }
         }
         .backgroundTask(.appRefresh(AlarmScheduler.refreshTaskID)) {
             await DataCleanup.removeExpired()
-            await AlarmScheduler.shared.syncNow()
+            await AlarmScheduler.shared.syncNow(full: true)
             await AlarmScheduler.shared.scheduleAppRefresh()
         }
     }
