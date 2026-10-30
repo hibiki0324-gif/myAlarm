@@ -4,3 +4,11 @@ xcuserdata/
 DerivedData/
 build/
 .build/
+
+# fastlane
+fastlane/.env
+fastlane/report.xml
+fastlane/test_output/
+fastlane/screenshots_raw/
+fastlane/README.md
+*.p8

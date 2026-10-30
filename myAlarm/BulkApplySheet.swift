@@ -122,6 +122,10 @@ struct BulkApplySheet: View {
                     pattern = [.template(first), .template(first), .off].map { PatternStep(choice: $0) }
                     weekdayChoice = .template(first)
                 }
+                if DemoMode.isEnabled, templates.count >= 2 {
+                    let (day, night) = (DayChoice.template(templates[0]), DayChoice.template(templates[1]))
+                    pattern = [day, day, night, night, .off, .off].map { PatternStep(choice: $0) }
+                }
             }
         }
     }

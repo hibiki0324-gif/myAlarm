@@ -110,6 +110,7 @@ final class AlarmScheduler {
     }
 
     func syncNow(full: Bool = false) async {
+        guard !DemoMode.isEnabled else { return }
         needsFullSync = needsFullSync || full
         needsSync = true
         guard !isSyncing else { return }

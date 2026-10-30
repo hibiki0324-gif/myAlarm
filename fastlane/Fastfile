@@ -1,0 +1,33 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "シミュレータで撮影し、マーケ用画像まで作る"
+  lane :screenshots do
+    capture_ios_screenshots
+    frame_images
+  end
+
+  desc "撮影済みの画像からマーケ用画像だけ作り直す"
+  lane :frame_images do
+    sh("swift", "frame_screenshots.swift", "screenshots_raw/ja-JP", "screenshots/ja")
+  end
+
+  desc "マーケ用画像を App Store Connect にアップロードする（審査には出さない）"
+  lane :upload_screenshots do
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_filepath: ENV.fetch("ASC_KEY_PATH")
+    )
+    upload_to_app_store(
+      api_key: api_key,
+      screenshots_path: "./fastlane/screenshots",
+      overwrite_screenshots: true,
+      skip_binary_upload: true,
+      skip_metadata: true,
+      submit_for_review: false,
+      run_precheck_before_submit: false,
+      force: true
+    )
+  end
+end

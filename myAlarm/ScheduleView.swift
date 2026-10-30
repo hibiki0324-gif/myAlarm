@@ -9,11 +9,11 @@ struct ScheduleView: View {
     @Query private var reservations: [ShiftReservation]
     @Query private var oneOffs: [OneOffAlarm]
 
-    @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
+    @State private var month = Calendar.current.dateInterval(of: .month, for: DemoMode.now)?.start ?? DemoMode.now
     @State private var selectedDay: SelectedDay?
     @State private var isBulkApplyPresented = false
     /// 時間がたっても「次のアラーム」や今日の表示が古くならないよう、定期的に更新する
-    @State private var now = Date.now
+    @State private var now = DemoMode.now
 
     var body: some View {
         // 描画 1 回につき 1 度だけ計算して使い回す
@@ -74,7 +74,7 @@ struct ScheduleView: View {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(30))
                     // 表示は分単位なので、分が変わったときだけ描き直す
-                    let current = Date.now
+                    let current = DemoMode.now
                     if !Calendar.current.isDate(current, equalTo: now, toGranularity: .minute) {
                         now = current
                     }
@@ -115,7 +115,7 @@ struct ScheduleView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(next.date, format: .dateTime.hour().minute())
                         .font(.system(size: 44, weight: .semibold, design: .rounded))
-                    Text(next.date, format: .relative(presentation: .named))
+                    Text(relativeText(next.date))
                         .foregroundStyle(.secondary)
                 }
                 Text(next.title)
@@ -125,6 +125,12 @@ struct ScheduleView: View {
             Text("予定されているアラームはありません")
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func relativeText(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        return formatter.localizedString(for: date, relativeTo: now)
     }
 
     /// 止めている間は「元に戻す」、そうでなければ「起きた」を出す。
@@ -274,6 +280,7 @@ private struct MonthCalendarView: View {
                     }
                     .buttonStyle(.borderless)
                     .tint(.primary)
+                    .accessibilityIdentifier("day-\(calendar.component(.day, from: plan.day))")
                 }
             }
         }

@@ -15,7 +15,7 @@ xcodebuild -project myAlarm.xcodeproj -scheme myAlarm \
   -destination 'generic/platform=iOS Simulator' -quiet build
 ```
 
-テストターゲットはまだない。
+単体テストはまだない。`myAlarmUITests` は App Store 用スクリーンショットの撮影専用（手順は docs/app-store-screenshots.md）。
 
 ## 構成と設計の前提
 
@@ -33,6 +33,7 @@ xcodebuild -project myAlarm.xcodeproj -scheme myAlarm \
 - 「起きた」で止めた範囲は `AlarmScheduler.suppressedUntil`（UserDefaults に保存）で持つ。この時刻までのアラームは同期時に登録しない。止める範囲は `AlarmPlanner.seriesEnd`（間隔 `seriesGap` 以内で連なるアラーム）で決める。
 - 古いデータの自動削除: `DataCleanup.removeExpired` が、先月 1 日より前の `ShiftReservation` と `OneOffAlarm` を消す。アプリがアクティブになったときとバックグラウンド更新で実行する。日付を持つモデルを増やしたら、ここにも追加するか検討する。
 - パフォーマンス: 入力欄をモデルに直接つなぐと 1 文字ごとに関係する画面がすべて描き直されるので、`@State` の下書きに持って確定時（フォーカスが外れたとき・閉じるとき）に反映する（例: `TemplateEditView` の `nameDraft`）。
+- デモ表示: 起動引数 `-demoMode`（`DemoMode`、Debug ビルド限定）でデータをメモリ上に置き、AlarmKit を呼ばず、現在時刻を固定する。画面の現在時刻は `Date.now` ではなく `DemoMode.now` を使うと撮影結果が安定する。
 - 優先順位: 予約（`ShiftReservation`）> 基本テンプレート（`isActive` の `AlarmTemplate`）。予約の `template == nil` は「休み」。
 - `Info.plist` に `NSAlarmKitUsageDescription` とバックグラウンド更新の ID がある。ID を変えるときは `AlarmScheduler.refreshTaskID` と両方を直す。
 

@@ -145,7 +145,7 @@ struct DayDetailSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents(DemoMode.isEnabled ? [.large] : [.medium, .large])
     }
 
     /// 同じ時刻の単発アラームがなければ追加する。
