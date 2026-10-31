@@ -57,6 +57,13 @@ iOS では、アプリが指定日に自分で「テンプレートを切り替�
 | `myAlarm/BulkApplySheet.swift` | 週・月・期間へのまとめて設定 |
 | `myAlarm/BulkAlarmInputSheet.swift` | 時間帯を指定したアラームのまとめて追加 |
 | `myAlarm/TemplateViews.swift` | 「テンプレート」タブ（テンプレートとアラームの編集） |
+| `myAlarm/DemoMode.swift` | スクリーンショット用のデモ表示（Debug ビルド限定） |
+| `myAlarmUITests/` | スクリーンショットの撮影 |
+| `fastlane/` | 撮影、マーケ用画像の作成、アップロードの設定 |
+
+## App Store 用の画像
+
+撮影からアップロードまでの手順は [docs/app-store-screenshots.md](docs/app-store-screenshots.md) を参照してください。
 
 ## 今後の予定
 

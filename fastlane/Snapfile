@@ -1,0 +1,13 @@
+project("./myAlarm.xcodeproj")
+scheme("myAlarm")
+devices(["iPhone 17 Pro Max"]) # 6.9 インチ（1320×2868）
+languages(["ja-JP"])
+output_directory("./fastlane/screenshots_raw")
+clear_previous_screenshots(true)
+skip_open_summary(true)
+reinstall_app(true)
+stop_after_first_error(true)
+
+# ステータスバーを 9:41・フル充電に固定する
+override_status_bar(true)
+override_status_bar_arguments("--time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --operatorName '' --batteryState discharging --batteryLevel 100")

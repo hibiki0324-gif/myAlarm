@@ -5,7 +5,8 @@ import SwiftUI
 enum AppData {
     static let container: ModelContainer = {
         do {
-            return try ModelContainer(for: AlarmTemplate.self, TemplateAlarm.self, ShiftReservation.self, OneOffAlarm.self)
+            let configuration = ModelConfiguration(isStoredInMemoryOnly: DemoMode.isEnabled)
+            return try ModelContainer(for: AlarmTemplate.self, TemplateAlarm.self, ShiftReservation.self, OneOffAlarm.self, configurations: configuration)
         } catch {
             fatalError("データベースを開けませんでした: \(error)")
         }
@@ -19,7 +20,11 @@ struct MyAlarmApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        SampleData.seedIfNeeded(container.mainContext)
+        if DemoMode.isEnabled {
+            DemoMode.seed(container.mainContext)
+        } else {
+            SampleData.seedIfNeeded(container.mainContext)
+        }
     }
 
     var body: some Scene {
