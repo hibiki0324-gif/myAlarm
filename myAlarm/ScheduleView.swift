@@ -57,6 +57,10 @@ struct ScheduleView: View {
                         Text("先月より前の日付ごとの指定と「この日だけのアラーム」は、アプリを開いたときに自動で削除されます。")
                     }
                 }
+
+                Section {
+                    Link("プライバシーポリシー", destination: Self.privacyPolicyURL)
+                }
             }
             .navigationTitle("予定")
             .toolbar {
@@ -82,6 +86,8 @@ struct ScheduleView: View {
             }
         }
     }
+
+    private static let privacyPolicyURL = URL(string: "https://hibiki0324-gif.github.io/myAlarm/privacy.html")!
 
     private var monthPlans: [DayPlan] {
         let days = Calendar.current.range(of: .day, in: .month, for: month)?.count ?? 0
