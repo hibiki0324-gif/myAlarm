@@ -6,7 +6,8 @@
 
 - ユーザーとの会話、コードのコメント、UI の文言、コミットメッセージはすべて日本語。
 - 実機は iPhone 12（iOS 26）。AlarmKit の鳴動はシミュレータでは確認しづらいので、アラームまわりの変更は実機での確認をユーザーに依頼する。
-- 署名は無料アカウント（Personal Team）なので、実機に入れたアプリは 7 日で起動できなくなる。週 1 回は Xcode から入れ直す必要がある。
+- 署名は有料の Apple Developer Program（Team ID は無料時代と同じ）。App Store で公開中（日本のみ、無料）。
+- アップデートを出すときは `MARKETING_VERSION` と `CURRENT_PROJECT_VERSION`（ビルド番号）を上げ、Xcode の Archive からアップロードして審査に出す。スクリーンショットとアップロードの手順は docs/app-store-screenshots.md。
 
 ## ビルド
 
